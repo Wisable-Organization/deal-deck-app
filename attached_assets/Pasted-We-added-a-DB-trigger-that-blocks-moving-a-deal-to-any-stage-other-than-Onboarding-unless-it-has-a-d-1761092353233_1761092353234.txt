@@ -1,0 +1,25 @@
+We added a DB trigger that blocks moving a deal to any stage other than Onboarding unless it has a documents row with doc_type='valuation'. The DB throws an error if violated; the app must reflect this with a friendly toast.
+Tables: deals(id, stage, …), documents(deal_id, doc_type, …), deal_buyer_matches(id, deal_id, buying_party_id, stage, …), buying_parties(...).
+A) Deal board/pipeline — respect “valuation required” rule
+On render, check hasValuation = exists documents where deal_id=deal.id and lower(doc_type)='valuation'.
+Disable/grayout drop targets for stages ≠ Onboarding if !hasValuation; tooltip: “Add a Valuation document to move past Onboarding.”
+On drop: keep supabase.from('deals').update({stage}).eq('id', dealId); if DB throws, show toast with error.message and revert optimistic UI.
+Creating a deal directly in a later stage → same behavior: surface DB error and keep it in Onboarding.
+B) Buyer Party details — make it actionable
+Convert detail fields to controlled inputs with “Edit/Save” toggle (or inline save-on-blur).
+ On save: supabase.from('buying_parties').update({...}).eq('id', buyingPartyId); toast success/error.
+Add a Mini Kanban of matches:
+ select * from deal_buyer_matches where buying_party_id=:id order by updated_at desc.
+ Columns: Interested, NDA Signed, IOI Sent, LOI Sent, Exclusivity.
+ Each card = one match (deal name, quick stats).
+ Enable drag & drop between stages → update via
+ supabase.from('deal_buyer_matches').update({stage:newStage}).eq('id', matchId) with optimistic UI + rollback on error.
+Add “+ Match” button to link this buyer to a deal (modal with deal picker → insert into deal_buyer_matches).
+“Email”, “Call”, etc. should trigger existing handlers (or stub with console + TODO).
+C) Helpers
+Hook useHasValuation(dealId) → boolean (cache per deal).
+Toast/alert component should display raw error.message when stage move blocked.
+Acceptance
+Deals without valuation can’t move past Onboarding (blocked or toast).
+Buyer Party fields are editable and persist.
+Matches show as mini-kanban; drag/drop updates stage and persists.

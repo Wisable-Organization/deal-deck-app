@@ -1,0 +1,67 @@
+We added a DB trigger that blocks moving a deal to any stage other than Onboarding unless the deal has a documents row with doc_type = 'valuation'. The DB throws an error if the rule is violated. App must reflect this and show a friendly message.
+
+Tables you already know: deals(id, stage, …), documents(deal_id, doc_type, …), deal_buyer_matches(id, deal_id, buying_party_id, stage, …), buying_parties(...).
+
+A) Deal board/pipeline — respect “valuation required” rule
+
+UI guard (soft)
+
+When rendering each deal card, fetch hasValuation = exists documents where deal_id=deal.id and lower(doc_type)='valuation'.
+
+Disable/grayout drop targets for stages ≠ Onboarding if !hasValuation.
+
+Tooltip: “Add a Valuation document to move past Onboarding.”
+
+On drop (hard)
+
+Keep existing update: supabase.from('deals').update({ stage }).eq('id', dealId).
+
+If the DB throws, show toast with error.message and revert the optimistic UI change (if any).
+
+Edge cases
+
+Creating a deal directly in a later stage: same behavior—surface DB error and keep the form in Onboarding.
+
+
+B) Buyer Party details — make it truly actionable:
+
+Editable fields
+
+Convert fields in Buyer Party details to controlled inputs.
+
+Add an “Edit/Save” toggle (or inline save-on-blur).
+
+On save: supabase.from('buying_parties').update({...}).eq('id', buyingPartyId), toast success/error.
+
+Mini Kanban of Matches
+
+Query: select * from deal_buyer_matches where buying_party_id = :id order by updated_at desc.
+
+Group columns by stage (reuse same stage list as deals, if applicable).
+
+Each card represents one match (include deal name, quick stats).
+
+Enable drag & drop between stage columns: on drop, call
+supabase.from('deal_buyer_matches').update({ stage: newStage }).eq('id', matchId), with optimistic UI + rollback on error.
+
+Add “+ Match” button to link this buyer to a deal (simple modal with deal picker → insert into deal_buyer_matches).
+
+Buttons
+
+“Email”, “Call”, etc. should trigger whatever existing handlers you have; if not wired, stub them to console + TODO.
+
+C) Small helpers:
+
+Add a reusable hook: useHasValuation(dealId) → boolean (caches per deal).
+
+Centralize STAGES = ['Onboarding', '…'] in one file and import in both pipeline and mini-kanban.
+
+Toast/alert component: display raw error.message from Supabase when stage move is blocked.
+
+Acceptance:
+
+Dragging a deal without a valuation doc past Onboarding is visually blocked; forcing it shows a DB error toast and UI reverts.
+
+Buyer Party fields can be edited and persist.
+
+Matches appear as a mini-kanban; dragging updates deal_buyer_matches.stage and survives refresh.
