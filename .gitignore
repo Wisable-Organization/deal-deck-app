@@ -6,3 +6,4 @@ vite.config.ts.*
 *.tar.gz
 .git.backup.*
 .env
+attached_assets
