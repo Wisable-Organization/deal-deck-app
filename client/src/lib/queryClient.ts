@@ -30,6 +30,18 @@ export async function apiRequest(
     credentials: "include",
   });
 
+  // Handle 401 Unauthorized - clear session and redirect to login
+  if (res.status === 401) {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user_id");
+    localStorage.removeItem("user_email");
+    // Redirect to login page
+    if (window.location.pathname !== "/login" && window.location.pathname !== "/register" && window.location.pathname !== "/reset-password") {
+      window.location.href = "/login";
+    }
+    throw new Error("Unauthorized: Please login again");
+  }
+
   await throwIfResNotOk(res);
   return res;
 }
@@ -40,12 +52,33 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    const token = localStorage.getItem("access_token");
+    const headers: Record<string, string> = {};
+    
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers,
     });
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+    // Handle 401 Unauthorized - clear session and redirect to login
+    if (res.status === 401) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user_id");
+      localStorage.removeItem("user_email");
+      
+      if (unauthorizedBehavior === "returnNull") {
+        return null;
+      }
+      
+      // Redirect to login page
+      if (window.location.pathname !== "/login" && window.location.pathname !== "/register" && window.location.pathname !== "/reset-password") {
+        window.location.href = "/login";
+      }
+      throw new Error("Unauthorized: Please login again");
     }
 
     await throwIfResNotOk(res);

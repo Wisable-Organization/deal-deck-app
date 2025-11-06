@@ -4,7 +4,7 @@ import { Deal, dealStages, Document } from "@shared/schema";
 import { DealCard } from "@/components/DealCard";
 import { Button } from "@/components/ui/button";
 import { Filter, Plus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {

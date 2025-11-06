@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation, Link } from "react-router";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,19 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  
+  // Get the page the user was trying to access before being redirected to login
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
+  
+  // Redirect to dashboard if already logged in
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      navigate(from, { replace: true });
+    }
+  }, [navigate, from]);
 
   const loginMutation = useMutation({
     mutationFn: async (data: { email: string; password: string }) => {
@@ -32,8 +44,8 @@ export default function Login() {
         description: "Welcome back!",
       });
       
-      // Redirect to dashboard
-      navigate("/dashboard");
+      // Redirect to the page the user was trying to access, or dashboard by default
+      navigate(from, { replace: true });
     },
     onError: (error: Error) => {
       setError(error.message || "Failed to login. Please check your credentials.");

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Deal, Contact, Activity, Document, DealBuyerMatch, BuyingParty } from "@shared/schema";
 import { Button } from "@/components/ui/button";
