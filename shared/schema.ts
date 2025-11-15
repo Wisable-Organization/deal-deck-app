@@ -39,14 +39,15 @@ export const deals = pgTable("deals", {
 });
 
 // Contacts table (for sellers and buyers)
+// Note: entityId and entityType are computed fields, not stored in the contacts table
+// For buying parties: linked via party_contacts junction table
+// For deals: linked via companies_contacts junction table
 export const contacts = pgTable("contacts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   role: text("role").notNull(),
   email: text("email"),
   phone: text("phone"),
-  entityId: varchar("entity_id").notNull(), // dealId or buyingPartyId
-  entityType: text("entity_type").notNull(), // 'deal' or 'buying_party'
 });
 
 // Buying Parties table

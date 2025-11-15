@@ -267,7 +267,7 @@ export default function DealDetails() {
             {/* Command Bar */}
             <div className="flex">
               <div className="ml-auto flex items-center gap-2">
-                <Button variant="outline" size="sm" data-testid="button-schedule">
+                {/* <Button variant="outline" size="sm" data-testid="button-schedule">
                   <Calendar className="w-4 h-4 mr-2" /> Schedule
                 </Button>
                 <Button variant="outline" size="sm" data-testid="button-signature">
@@ -281,7 +281,7 @@ export default function DealDetails() {
                 </Button>
                 <Button variant="outline" size="sm" data-testid="button-update-stage">
                   <ArrowUpRight className="w-4 h-4 mr-2" /> Update Stage
-                </Button>
+                </Button> */}
                 <Button
                   variant="outline"
                   size="sm"
@@ -360,12 +360,12 @@ export default function DealDetails() {
                   </div>
                 </div>
 
-                <div>
+                {/*<div>
                   <div className="text-xs text-muted-foreground mb-1">Commission</div>
                   <div className="text-base font-semibold" data-testid="text-commission">
                     {deal.commission}%
                   </div>
-                </div>
+                </div> */}
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">Age in Stage</div>
                   <div className="text-base font-semibold" data-testid="text-age">

@@ -36,10 +36,20 @@ import {
   CheckCircle2,
   Circle,
   ArrowUpRight,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+
+// Extended Contact type for API responses that include entity linking info
+// Note: API returns snake_case (entity_id, entity_type) but we'll handle both
+type ContactWithEntity = Contact & {
+  entityId?: string | null;
+  entityType?: string | null;
+  entity_id?: string | null;
+  entity_type?: string | null;
+};
 
 type PartyMatchRow = { match: DealBuyerMatch; deal: Deal };
 
@@ -63,6 +73,7 @@ export default function BuyingPartyDetail() {
   const [contactSearch, setContactSearch] = useState("");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showConfirmAdd, setShowConfirmAdd] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { toast } = useToast();
 
   const { data: party } = useQuery<BuyingParty>({
@@ -70,7 +81,7 @@ export default function BuyingPartyDetail() {
     enabled: !!partyId,
   });
 
-  const { data: contacts = [] } = useQuery<Contact[]>({
+  const { data: contacts = [] } = useQuery<ContactWithEntity[]>({
     queryKey: ["/api/contacts", { entityId: partyId, entityType: "buying_party" }],
     queryFn: async () => {
       const res = await fetch(`/api/contacts?entityId=${partyId}&entityType=buying_party`);
@@ -213,15 +224,36 @@ export default function BuyingPartyDetail() {
     updatePartyMutation.mutate(editData);
   };
 
-  const addContactMutation = useMutation({
+  const deletePartyMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("DELETE", `/api/buying-parties/${partyId}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Buying party deleted",
+        description: "The buying party has been permanently deleted.",
+      });
+      navigate("/buying-parties");
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete buying party. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteParty = () => {
+    deletePartyMutation.mutate();
+    setShowDeleteDialog(false);
+  };
+
+  const addPartyContactMutation = useMutation({
     mutationFn: async (contact: Contact) => {
-      return await apiRequest("POST", "/api/contacts", {
-        name: contact.name,
-        role: contact.role,
-        email: contact.email,
-        phone: contact.phone,
-        entityId: partyId,
-        entityType: "buying_party",
+      return await apiRequest("POST", `/api/buying-parties/${partyId}/contacts`, {
+        contactId: contact.id,
+        ...(contact.role && { role: contact.role }),
       });
     },
     onSuccess: () => {
@@ -251,7 +283,7 @@ export default function BuyingPartyDetail() {
 
   const handleConfirmAdd = () => {
     if (selectedContact) {
-      addContactMutation.mutate(selectedContact);
+      addPartyContactMutation.mutate(selectedContact);
     }
   };
 
@@ -272,9 +304,8 @@ export default function BuyingPartyDetail() {
     );
   }
 
-  const partyContacts = contacts.filter(
-    (c) => c.entityType === "buying_party" && c.entityId === partyId
-  );
+  // The query is already filtered by entityId and entityType, so all contacts are for this buying party
+  const partyContacts = contacts;
 
   // Optional fields via "any" until shared types include them
   const targetIndustries: string[] = Array.isArray((party as any)?.targetIndustries)
@@ -308,6 +339,16 @@ export default function BuyingPartyDetail() {
               >
                 <Edit className="w-4 h-4 mr-2" />
                 Edit
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                data-testid="button-delete-party"
+                onClick={() => setShowDeleteDialog(true)}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
               </Button>
               <Button size="sm" data-testid="button-schedule-meeting">
                 <Calendar className="w-4 h-4 mr-2" />
@@ -870,10 +911,47 @@ export default function BuyingPartyDetail() {
             </Button>
             <Button
               onClick={handleConfirmAdd}
-              disabled={addContactMutation.isPending}
+              disabled={addPartyContactMutation.isPending}
               data-testid="button-confirm-add-contact"
             >
-              {addContactMutation.isPending ? "Adding..." : "Add Contact"}
+              {addPartyContactMutation.isPending ? "Adding..." : "Add Contact"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Delete Buying Party</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this buying party? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="p-4 border border-border rounded-md bg-muted/50">
+              <div className="font-medium">{party?.name}</div>
+              <div className="text-sm text-muted-foreground mt-1">
+                All associated data will be permanently removed.
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+              data-testid="button-cancel-delete"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteParty}
+              disabled={deletePartyMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deletePartyMutation.isPending ? "Deleting..." : "Delete Party"}
             </Button>
           </div>
         </DialogContent>
