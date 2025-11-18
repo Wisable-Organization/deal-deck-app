@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Deal, dealStages, Document } from "@shared/schema";
+import { Deal, dealStages, Document, User } from "@shared/schema";
 import { DealCard } from "@/components/DealCard";
 import { Button } from "@/components/ui/button";
 import { Filter, Plus } from "lucide-react";
@@ -35,7 +35,7 @@ export default function DealPipeline() {
   const [newDealData, setNewDealData] = useState({
     companyName: "",
     revenue: "",
-    owner: "",
+    ownerId: "",
     priority: "medium" as "low" | "medium" | "high",
   });
 
@@ -45,6 +45,10 @@ export default function DealPipeline() {
 
   const { data: documents = [] } = useQuery<Document[]>({
     queryKey: ["/api/documents"],
+  });
+
+  const { data: users = [] } = useQuery<User[]>({
+    queryKey: ["/api/users"],
   });
 
   const updateStageMutation = useMutation({
@@ -67,7 +71,7 @@ export default function DealPipeline() {
       const response = await apiRequest("POST", "/api/deals", {
         companyName: dealData.companyName.trim(),
         revenue: revenueNum.toString(),
-        owner: dealData.owner.trim(),
+        ownerId: dealData.ownerId,
         stage: "onboarding",
         priority: dealData.priority,
         touches: 0,
@@ -79,7 +83,7 @@ export default function DealPipeline() {
     onSuccess: (newDeal) => {
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
       setShowNewDealDialog(false);
-      setNewDealData({ companyName: "", revenue: "", owner: "", priority: "medium" });
+      setNewDealData({ companyName: "", revenue: "", ownerId: "", priority: "medium" });
       toast({
         title: "Deal created",
         description: `${newDeal.companyName} has been added to the pipeline.`,
@@ -97,7 +101,7 @@ export default function DealPipeline() {
   });
 
   const handleCreateDeal = () => {
-    if (!newDealData.companyName.trim() || !newDealData.revenue || !newDealData.owner.trim()) {
+    if (!newDealData.companyName.trim() || !newDealData.revenue || !newDealData.ownerId) {
       toast({
         title: "Missing fields",
         description: "Please fill in company name, revenue, and owner.",
@@ -306,16 +310,24 @@ export default function DealPipeline() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="owner">
+              <Label htmlFor="ownerId">
                 Deal Owner <span className="text-destructive">*</span>
               </Label>
-              <Input
-                id="owner"
-                data-testid="input-owner"
-                placeholder="e.g., Jennifer Walsh"
-                value={newDealData.owner}
-                onChange={(e) => setNewDealData({ ...newDealData, owner: e.target.value })}
-              />
+              <Select
+                value={newDealData.ownerId}
+                onValueChange={(value) => setNewDealData({ ...newDealData, ownerId: value })}
+              >
+                <SelectTrigger id="ownerId" data-testid="select-owner">
+                  <SelectValue placeholder="Select owner" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="priority">Priority</Label>

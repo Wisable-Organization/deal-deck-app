@@ -5,15 +5,38 @@ import { z } from "zod";
 
 // Deal stages enum
 export const dealStages = ["onboarding", "valuation", "buyer_matching", "due_diligence", "sold"] as const;
+
+export const matchStages = [
+  "new",
+  "nda_sent",
+  "nda_signed",
+  "cim_sent",
+  "cim_viewed",
+  "intro_call",
+  "diligence",
+  "ioi",
+  "loi",
+  "under_contract",
+  "won",
+  "lost"
+] as const;
+
 export type DealStage = typeof dealStages[number];
+export type MatchStage = typeof matchStages[number];
 
 // Activity types
-export const activityTypes = ["task", "email", "meeting", "document", "system"] as const;
+export const activityTypes = ["task", "email", "meeting", "document", "system", "note"] as const;
 export type ActivityType = typeof activityTypes[number];
 
 // Document status
 export const documentStatuses = ["draft", "sent", "signed"] as const;
 export type DocumentStatus = typeof documentStatuses[number];
+
+// User type
+export type User = {
+  id: string;
+  email: string;
+};
 
 // Deals table
 export const deals = pgTable("deals", {
@@ -34,7 +57,8 @@ export const deals = pgTable("deals", {
   touches: integer("touches").notNull().default(0),
   ageInStage: integer("age_in_stage").notNull().default(0),
   healthScore: integer("health_score").notNull().default(85),
-  owner: text("owner").notNull(),
+  ownerId: varchar("owner_id").notNull(),
+  owner: text("owner").notNull(), // Owner email for display
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -72,6 +96,7 @@ export const dealBuyerMatches = pgTable("deal_buyer_matches", {
   targetAcquisition: integer("target_acquisition"),
   budget: decimal("budget", { precision: 15, scale: 2 }),
   status: text("status").notNull().default("interested"),
+  stage: text("stage", { enum: matchStages }).default("new"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -81,7 +106,7 @@ export const activities = pgTable("activities", {
   dealId: varchar("deal_id"),
   buyingPartyId: varchar("buying_party_id"),
   type: text("type").notNull().$type<ActivityType>(),
-  title: text("title").notNull(),
+  title: text("title").notNull(), 
   description: text("description"),
   status: text("status").notNull().default("pending"),
   assignedTo: text("assigned_to"),

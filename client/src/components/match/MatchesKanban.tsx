@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import MatchStagePill, { MATCH_STAGES } from "./MatchStagePill";
+import { LoadingState } from "@/components/LoadingState";
 
 type PartyMatchRow = {
   match: { id: string; stage?: string | null; status?: string | null };
@@ -24,11 +25,15 @@ async function fetchMatchesEither(partyId: string): Promise<PartyMatchRow[]> {
 export default function MatchesKanban({ partyId }: { partyId: string }) {
   const navigate = useNavigate();
 
-  const { data: rows = [] } = useQuery<PartyMatchRow[]>({
+  const { data: rows = [], isLoading } = useQuery<PartyMatchRow[]>({
     queryKey: ["party-matches", partyId],
     queryFn: () => fetchMatchesEither(partyId),
     enabled: !!partyId,
   });
+
+  if (isLoading) {
+    return <LoadingState variant="inline" />;
+  }
 
   const byStage = new Map<string, PartyMatchRow[]>();
   MATCH_STAGES.forEach((s) => byStage.set(s.key, []));

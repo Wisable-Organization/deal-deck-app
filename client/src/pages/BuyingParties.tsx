@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+
+// Extended BuyingParty type with contacts from API
+type BuyingPartyWithContacts = BuyingParty & {
+  contacts?: Contact[];
+};
 import {
   Dialog,
   DialogContent,
@@ -30,12 +35,8 @@ export default function BuyingParties() {
     timeline: "",
   });
 
-  const { data: parties = [], isLoading } = useQuery<BuyingParty[]>({
+  const { data: parties = [], isLoading } = useQuery<BuyingPartyWithContacts[]>({
     queryKey: ["/api/buying-parties"],
-  });
-
-  const { data: allContacts = [] } = useQuery<Contact[]>({
-    queryKey: ["/api/contacts"],
   });
 
   const createPartyMutation = useMutation({
@@ -114,9 +115,6 @@ export default function BuyingParties() {
     );
   }
 
-  const getPartyContacts = (partyId: string) => {
-    return allContacts.filter(c => c.entityType === "buying_party" && c.entityId === partyId);
-  };
 
   return (
     <div className="max-w-[1920px] mx-auto px-6 lg:px-8 py-6">
@@ -162,8 +160,7 @@ export default function BuyingParties() {
           </thead>
           <tbody className="divide-y divide-border">
             {parties.map((party) => {
-              const partyContacts = getPartyContacts(party.id);
-              const contactNames = partyContacts.map(c => c.name).join(", ");
+              const contactNames = party.contacts?.map(c => c.name).join(", ") || "";
               
               return (
                 <tr
