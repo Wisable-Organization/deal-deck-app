@@ -36,10 +36,21 @@ import {
   CheckCircle2,
   Circle,
   ArrowUpRight,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { LoadingState } from "@/components/LoadingState";
+
+// Extended Contact type for API responses that include entity linking info
+// Note: API returns snake_case (entity_id, entity_type) but we'll handle both
+type ContactWithEntity = Contact & {
+  entityId?: string | null;
+  entityType?: string | null;
+  entity_id?: string | null;
+  entity_type?: string | null;
+};
 
 type PartyMatchRow = { match: DealBuyerMatch; deal: Deal };
 
@@ -63,6 +74,7 @@ export default function BuyingPartyDetail() {
   const [contactSearch, setContactSearch] = useState("");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showConfirmAdd, setShowConfirmAdd] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { toast } = useToast();
 
   const { data: party } = useQuery<BuyingParty>({
@@ -70,11 +82,22 @@ export default function BuyingPartyDetail() {
     enabled: !!partyId,
   });
 
-  const { data: contacts = [] } = useQuery<Contact[]>({
+  const { data: contacts = [], isLoading: isLoadingContacts } = useQuery<ContactWithEntity[]>({
     queryKey: ["/api/contacts", { entityId: partyId, entityType: "buying_party" }],
     queryFn: async () => {
       const res = await fetch(`/api/contacts?entityId=${partyId}&entityType=buying_party`);
-      if (!res.ok) throw new Error("Failed to fetch contacts");
+      if (!res.ok) {
+        const error: any = new Error(`HTTP ${res.status}: ${res.statusText}`);
+        error.response = res;
+        error.status = res.status;
+        error.statusText = res.statusText;
+        try {
+          error.data = await res.json();
+        } catch {
+          error.data = await res.text();
+        }
+        throw error;
+      }
       return res.json();
     },
     enabled: !!partyId,
@@ -84,7 +107,18 @@ export default function BuyingPartyDetail() {
     queryKey: ["/api/contacts"],
     queryFn: async () => {
       const res = await fetch(`/api/contacts`);
-      if (!res.ok) throw new Error("Failed to fetch all contacts");
+      if (!res.ok) {
+        const error: any = new Error(`HTTP ${res.status}: ${res.statusText}`);
+        error.response = res;
+        error.status = res.status;
+        error.statusText = res.statusText;
+        try {
+          error.data = await res.json();
+        } catch {
+          error.data = await res.text();
+        }
+        throw error;
+      }
       return res.json();
     },
   });
@@ -93,28 +127,61 @@ export default function BuyingPartyDetail() {
     queryKey: ["/api/activities", { entityId: partyId }],
     queryFn: async () => {
       const res = await fetch(`/api/activities?entityId=${partyId}`);
-      if (!res.ok) throw new Error("Failed to fetch activities");
+      if (!res.ok) {
+        const error: any = new Error(`HTTP ${res.status}: ${res.statusText}`);
+        error.response = res;
+        error.status = res.status;
+        error.statusText = res.statusText;
+        try {
+          error.data = await res.json();
+        } catch {
+          error.data = await res.text();
+        }
+        throw error;
+      }
       return res.json();
     },
     enabled: !!partyId,
   });
 
-  const { data: documents = [] } = useQuery<Document[]>({
+  const { data: documents = [], isLoading: isLoadingDocuments } = useQuery<Document[]>({
     queryKey: ["/api/documents", { entityId: partyId }],
     queryFn: async () => {
       const res = await fetch(`/api/documents?entityId=${partyId}`);
-      if (!res.ok) throw new Error("Failed to fetch documents");
+      if (!res.ok) {
+        const error: any = new Error(`HTTP ${res.status}: ${res.statusText}`);
+        error.response = res;
+        error.status = res.status;
+        error.statusText = res.statusText;
+        try {
+          error.data = await res.json();
+        } catch {
+          error.data = await res.text();
+        }
+        throw error;
+      }
       return res.json();
     },
     enabled: !!partyId,
   });
 
   // All matches (deals) for this party, including per-deal interest level
-  const { data: partyMatches = [] } = useQuery<PartyMatchRow[]>({
+  const { data: partyMatches = [], isLoading: isLoadingMatches } = useQuery<PartyMatchRow[]>({
     queryKey: ["/api/buying-parties", partyId, "matches"],
     queryFn: async () => {
       const res = await fetch(`/api/buying-parties/${partyId}/matches`);
-      if (!res.ok) throw new Error("Failed to fetch party matches");
+      if (!res.ok) {
+        const error: any = new Error(`HTTP ${res.status}: ${res.statusText}`);
+        error.response = res;
+        error.status = res.status;
+        error.statusText = res.statusText;
+        try {
+          error.data = await res.json();
+        } catch {
+          error.data = await res.text();
+        }
+        throw error;
+      }
       return res.json();
     },
     enabled: !!partyId,
@@ -141,7 +208,18 @@ export default function BuyingPartyDetail() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes })
       });
-      if (!res.ok) throw new Error("Failed to save notes");
+      if (!res.ok) {
+        const error: any = new Error(`HTTP ${res.status}: ${res.statusText}`);
+        error.response = res;
+        error.status = res.status;
+        error.statusText = res.statusText;
+        try {
+          error.data = await res.json();
+        } catch {
+          error.data = await res.text();
+        }
+        throw error;
+      }
       return res.json();
     },
     onSuccess: (_, notes) => {
@@ -213,15 +291,36 @@ export default function BuyingPartyDetail() {
     updatePartyMutation.mutate(editData);
   };
 
-  const addContactMutation = useMutation({
+  const deletePartyMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("DELETE", `/api/buying-parties/${partyId}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Buying party deleted",
+        description: "The buying party has been permanently deleted.",
+      });
+      navigate("/buying-parties");
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete buying party. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteParty = () => {
+    deletePartyMutation.mutate();
+    setShowDeleteDialog(false);
+  };
+
+  const addPartyContactMutation = useMutation({
     mutationFn: async (contact: Contact) => {
-      return await apiRequest("POST", "/api/contacts", {
-        name: contact.name,
-        role: contact.role,
-        email: contact.email,
-        phone: contact.phone,
-        entityId: partyId,
-        entityType: "buying_party",
+      return await apiRequest("POST", `/api/buying-parties/${partyId}/contacts`, {
+        contactId: contact.id,
+        ...(contact.role && { role: contact.role }),
       });
     },
     onSuccess: () => {
@@ -251,7 +350,7 @@ export default function BuyingPartyDetail() {
 
   const handleConfirmAdd = () => {
     if (selectedContact) {
-      addContactMutation.mutate(selectedContact);
+      addPartyContactMutation.mutate(selectedContact);
     }
   };
 
@@ -272,9 +371,8 @@ export default function BuyingPartyDetail() {
     );
   }
 
-  const partyContacts = contacts.filter(
-    (c) => c.entityType === "buying_party" && c.entityId === partyId
-  );
+  // The query is already filtered by entityId and entityType, so all contacts are for this buying party
+  const partyContacts = contacts;
 
   // Optional fields via "any" until shared types include them
   const targetIndustries: string[] = Array.isArray((party as any)?.targetIndustries)
@@ -308,6 +406,16 @@ export default function BuyingPartyDetail() {
               >
                 <Edit className="w-4 h-4 mr-2" />
                 Edit
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                data-testid="button-delete-party"
+                onClick={() => setShowDeleteDialog(true)}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
               </Button>
               <Button size="sm" data-testid="button-schedule-meeting">
                 <Calendar className="w-4 h-4 mr-2" />
@@ -415,42 +523,48 @@ export default function BuyingPartyDetail() {
               </Button>
             </div>
             <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-              {partyContacts.map((contact) => (
-                <div
-                  key={contact.id}
-                  className="flex items-start justify-between py-2 border-b border-border last:border-0"
-                >
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">{contact.name}</div>
-                    <div className="text-xs text-muted-foreground">{contact.role}</div>
-                    {contact.email && (
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {contact.email}
+              {isLoadingContacts ? (
+                <LoadingState variant="list" count={3} />
+              ) : (
+                <>
+                  {partyContacts.map((contact) => (
+                    <div
+                      key={contact.id}
+                      className="flex items-start justify-between py-2 border-b border-border last:border-0"
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium text-sm ">{contact.name}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{contact.role}</div>
+                        {contact.email && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {contact.email}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      data-testid={`button-email-${contact.id}`}
-                    >
-                      <Mail className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      data-testid={`button-call-${contact.id}`}
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {partyContacts.length === 0 && (
-                <div className="text-sm text-muted-foreground">No contacts yet</div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          data-testid={`button-email-${contact.id}`}
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          data-testid={`button-call-${contact.id}`}
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {partyContacts.length === 0 && (
+                    <div className="text-sm text-muted-foreground">No contacts yet</div>
+                  )}
+                </>
               )}
             </div>
           </Card>
@@ -525,36 +639,40 @@ export default function BuyingPartyDetail() {
           </TabsContent>
 
           <TabsContent value="documents">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {documents.map((doc) => (
-                <Card
-                  key={doc.id}
-                  className="p-4 hover-elevate transition-shadow"
-                  data-testid={`card-doc-${doc.id}`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <FileIcon className="w-5 h-5 text-muted-foreground" />
-                      <span className="font-medium text-sm">{doc.name}</span>
+            {isLoadingDocuments ? (
+              <LoadingState variant="grid" count={6} />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {documents.map((doc) => (
+                  <Card
+                    key={doc.id}
+                    className="p-4 hover-elevate transition-shadow"
+                    data-testid={`card-doc-${doc.id}`}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <FileIcon className="w-5 h-5 text-muted-foreground" />
+                        <span className="font-medium text-sm">{doc.name}</span>
+                      </div>
+                      <Badge
+                        variant={doc.status === "signed" ? "default" : "secondary"}
+                        className="text-xs"
+                      >
+                        {doc.status}
+                      </Badge>
                     </div>
-                    <Badge
-                      variant={doc.status === "signed" ? "default" : "secondary"}
-                      className="text-xs"
-                    >
-                      {doc.status}
-                    </Badge>
+                    <div className="text-xs text-muted-foreground">
+                      {doc.createdAt && new Date(doc.createdAt).toLocaleDateString()}
+                    </div>
+                  </Card>
+                ))}
+                {documents.length === 0 && (
+                  <div className="col-span-3 text-center py-12 text-muted-foreground">
+                    No documents yet
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {doc.createdAt && new Date(doc.createdAt).toLocaleDateString()}
-                  </div>
-                </Card>
-              ))}
-              {documents.length === 0 && (
-                <div className="col-span-3 text-center py-12 text-muted-foreground">
-                  No documents yet
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="meetings">
@@ -577,9 +695,10 @@ export default function BuyingPartyDetail() {
                       <div className="flex-1">
                         <h4 className="font-medium mb-1">{meeting.title}</h4>
                         {meeting.description && (
-                          <p className="text-sm text-muted-foreground mb-2">
-                            {meeting.description}
-                          </p>
+                          <div 
+                            className="text-sm text-muted-foreground mb-2" 
+                            dangerouslySetInnerHTML={{ __html: meeting.description }}
+                          />
                         )}
                         <div className="flex items-center gap-4 text-xs text-muted-foreground">
                           {meeting.dueDate && (
@@ -640,9 +759,10 @@ export default function BuyingPartyDetail() {
                         </Badge>
                       </div>
                       {activity.description && (
-                        <p className="text-sm text-muted-foreground mb-2">
-                          {activity.description}
-                        </p>
+                        <div 
+                          className="text-sm text-muted-foreground mb-2" 
+                          dangerouslySetInnerHTML={{ __html: activity.description }}
+                        />
                       )}
                       <div className="flex items-center gap-4 text-xs text-muted-foreground">
                         {activity.assignedTo && <span>{activity.assignedTo}</span>}
@@ -667,7 +787,9 @@ export default function BuyingPartyDetail() {
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold">Matches</h3>
             </div>
-            {partyMatches.length === 0 ? (
+            {isLoadingMatches ? (
+              <LoadingState variant="inline" />
+            ) : partyMatches.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">No matches yet</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -870,10 +992,47 @@ export default function BuyingPartyDetail() {
             </Button>
             <Button
               onClick={handleConfirmAdd}
-              disabled={addContactMutation.isPending}
+              disabled={addPartyContactMutation.isPending}
               data-testid="button-confirm-add-contact"
             >
-              {addContactMutation.isPending ? "Adding..." : "Add Contact"}
+              {addPartyContactMutation.isPending ? "Adding..." : "Add Contact"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Delete Buying Party</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this buying party? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="p-4 border border-border rounded-md bg-muted/50">
+              <div className="font-medium">{party?.name}</div>
+              <div className="text-sm text-muted-foreground mt-1">
+                All associated data will be permanently removed.
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+              data-testid="button-cancel-delete"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteParty}
+              disabled={deletePartyMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deletePartyMutation.isPending ? "Deleting..." : "Delete Party"}
             </Button>
           </div>
         </DialogContent>

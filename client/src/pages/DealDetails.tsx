@@ -1,12 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Deal, Contact, Activity, Document, DealBuyerMatch, BuyingParty } from "@shared/schema";
+import { Deal, Contact, Activity, Document, DealBuyerMatch, BuyingParty, User } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +47,7 @@ import {
   Circle,
   FileIcon,
   X,
-  User,
+  User as UserIcon,
   Building2,
   DollarSign,
   Target,
@@ -35,13 +55,16 @@ import {
   Wrench,
   Share2,
   FolderPlus,
-  ExternalLink
+  ExternalLink,
+  Edit,
+  Trash2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import MatchStagePill from "@/components/match/MatchStagePill";
 import BuyerChecklist from "@/components/match/BuyerChecklist";
 import StageChecklistDeal from "@/components/stage/StageChecklistDeal";
+import { LoadingState } from "@/components/LoadingState";
 
 const stageLabels: Record<string, string> = {
   onboarding: "Onboarding",
@@ -83,53 +106,112 @@ export default function DealDetails() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareDocType, setShareDocType] = useState<string>("");
 
+  const [addActivityDialogOpen, setAddActivityDialogOpen] = useState(false);
+  const [newActivityData, setNewActivityData] = useState({
+    title: "",
+    type: "note",
+    description: "",
+    dueDate: "",
+    assignedTo: "",
+  });
+
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState<Partial<Deal>>({});
+
+  // Declare deleteDealMutation early so we can use it in query enabled conditions
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Helper function to extract error message from API response
+  const getErrorMessage = (error: any, fallback: string = "An error occurred") => {
+    if (error?.data?.detail) {
+      if (typeof error.data.detail === 'object') {
+        return Object.values(error.data.detail).flat().join(', ');
+      }
+      return error.data.detail;
+    }
+    return error instanceof Error ? error.message : fallback;
+  };
+
   const { data: deal } = useQuery<Deal>({
     queryKey: [`/api/deals/${dealId}`],
-    enabled: !!dealId,
+    enabled: !!dealId && !isDeleting,
+    retry: (failureCount, error: any) => {
+      // Don't retry on 404 (deal was deleted)
+      if (error?.message?.includes('404') || error?.status === 404) {
+        return false;
+      }
+      return failureCount < 3;
+    },
   });
 
   useEffect(() => {
     setNotesDraft(deal?.notes ?? "");
   }, [deal?.notes]);
 
+  // Initialize edit form data when dialog opens
+  useEffect(() => {
+    if (editDialogOpen && deal) {
+      setEditFormData({
+        companyName: deal.companyName,
+        description: deal.description,
+        revenue: deal.revenue,
+        sde: deal.sde,
+        valuationMin: deal.valuationMin,
+        valuationMax: deal.valuationMax,
+        stage: deal.stage,
+        ownerId: deal.ownerId,
+      });
+    }
+  }, [editDialogOpen, deal]);
+
   const { data: contacts = [] } = useQuery<Contact[]>({
     queryKey: ["/api/contacts", { entityId: dealId, entityType: "deal" }],
     queryFn: async () => {
       const res = await fetch(`/api/contacts?entityId=${dealId}&entityType=deal`);
-      if (!res.ok) throw new Error('Failed to fetch contacts');
+      if (!res.ok) throw res;
       return res.json();
     },
-    enabled: !!dealId,
+    enabled: !!dealId && !isDeleting,
   });
 
   const { data: activities = [] } = useQuery<Activity[]>({
     queryKey: ["/api/activities", { entityId: dealId }],
     queryFn: async () => {
       const res = await fetch(`/api/activities?entityId=${dealId}`);
-      if (!res.ok) throw new Error('Failed to fetch activities');
+      if (!res.ok) throw res;
       return res.json();
     },
-    enabled: !!dealId,
+    enabled: !!dealId && !isDeleting,
   });
 
   const { data: documents = [] } = useQuery<Document[]>({
     queryKey: ["/api/documents", { entityId: dealId }],
     queryFn: async () => {
       const res = await fetch(`/api/documents?entityId=${dealId}`);
-      if (!res.ok) throw new Error('Failed to fetch documents');
+      if (!res.ok) throw res;
       return res.json();
     },
-    enabled: !!dealId,
+    enabled: !!dealId && !isDeleting,
   });
 
-  const { data: buyerMatches = [] } = useQuery<BuyerMatchRow[]>({
+  const { data: buyerMatches = [], isLoading: isLoadingBuyerMatches } = useQuery<BuyerMatchRow[]>({
     queryKey: ["/api/deals", dealId, "buyers"],
-    enabled: !!dealId,
+    queryFn: async () => {
+      const res = await fetch(`/api/deals/${dealId}/buyers`);
+      if (!res.ok) throw res;
+      return res.json();
+    },
+    enabled: !!dealId && !isDeleting,
   });
 
   const { data: buyersWithNda = [] } = useQuery<BuyingParty[]>({
     queryKey: ["/api/deals", dealId, "buyers-with-nda"],
-    enabled: shareDialogOpen && !!dealId,
+    enabled: shareDialogOpen && !!dealId && !isDeleting,
+  });
+
+  const { data: users = [] } = useQuery<User[]>({
+    queryKey: ["/api/users"],
   });
 
   const { data: latestSummary } = useQuery<{ summary: string; createdAt: string; source?: string } | null>({
@@ -139,7 +221,7 @@ export default function DealDetails() {
       if (!res.ok) return null as any;
       return res.json();
     },
-    enabled: !!dealId,
+    enabled: !!dealId && !isDeleting,
   });
 
   // Mutations
@@ -150,7 +232,7 @@ export default function DealDetails() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes })
       });
-      if (!res.ok) throw new Error("Failed to save notes");
+      if (!res.ok) throw res;
       return res.json();
     },
     onSuccess: () => {
@@ -164,13 +246,116 @@ export default function DealDetails() {
       const res = await fetch(`/api/activities`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, dealId })
+        body: JSON.stringify({ ...payload, dealId: dealId })
       });
-      if (!res.ok) throw new Error("Failed to create activity");
+      if (!res.ok) throw res;
       return res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/activities", { entityId: dealId }] });
+      toast({
+        title: "Activity added",
+        description: "The activity has been added to the timeline",
+      });
+      setAddActivityDialogOpen(false);
+      setNewActivityData({
+        title: "",
+        type: "note",
+        description: "",
+        dueDate: "",
+        assignedTo: "",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: getErrorMessage(error, "Failed to create activity"),
+        variant: "destructive",
+      });
+    }
+  });
+
+  const updateDealMutation = useMutation({
+    mutationFn: async (payload: Partial<Deal>) => {
+      const res = await fetch(`/api/deals/${dealId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const error: any = new Error(`HTTP ${res.status}: ${res.statusText}`);
+        error.response = res;
+        error.status = res.status;
+        error.statusText = res.statusText;
+        try {
+          error.data = await res.json();
+        } catch {
+          error.data = await res.text();
+        }
+        throw error;
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/deals/${dealId}`] });
+      qc.invalidateQueries({ queryKey: ["/api/deals"] });
+      toast({
+        title: "Deal updated",
+        description: "The deal has been updated successfully",
+      });
+      setEditDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: getErrorMessage(error, "Failed to update deal"),
+        variant: "destructive",
+      });
+    }
+  });
+
+  const deleteDealMutation = useMutation({
+    mutationFn: async () => {
+      setIsDeleting(true);
+      const res = await fetch(`/api/deals/${dealId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const error: any = new Error(`HTTP ${res.status}: ${res.statusText}`);
+        error.response = res;
+        error.status = res.status;
+        error.statusText = res.statusText;
+        try {
+          error.data = await res.json();
+        } catch {
+          error.data = await res.text();
+        }
+        throw error;
+      }
+      // Check if response has content before parsing JSON
+      const text = await res.text();
+      return text ? JSON.parse(text) : null;
+    },
+    onSuccess: () => {
+      // Invalidate all deals queries to refresh the dashboard
+      qc.invalidateQueries({ queryKey: ["/api/deals"] });
+      // Navigate immediately before showing toast to avoid 404 errors from queries
+      navigate("/", { replace: true });
+      // Show toast after navigation
+      setTimeout(() => {
+        toast({
+          title: "Deal deleted",
+          description: "The deal has been deleted successfully",
+        });
+      }, 100);
+    },
+    onError: (error: any) => {
+      setIsDeleting(false);
+      toast({
+        title: "Error",
+        description: getErrorMessage(error, "Failed to delete deal"),
+        variant: "destructive",
+      });
     }
   });
 
@@ -224,7 +409,7 @@ export default function DealDetails() {
       : "border-l-rose-500";
 
   const filteredActivities = activities.filter((a) => (activeFilter === "all" ? true : a.type === activeFilter));
-  const sellerContacts = contacts.filter((c) => c.entityType === "deal" && c.entityId === dealId);
+  const sellerContacts = contacts; // Already filtered by entityId and entityType in the query
   const recentDocs = documents.slice(0, 3);
 
   const stageLabel = stageLabels[deal.stage] ?? deal.stage;
@@ -248,26 +433,36 @@ export default function DealDetails() {
                 <span className="text-sm text-muted-foreground" data-testid="text-owner">{deal.owner}</span>
               </div>
 
-              {/* Tools dropdown */}
-              <div className="relative">
-                <Button variant="outline" size="sm" onClick={() => setShowToolsMenu(v => !v)}>
-                  <Wrench className="w-4 h-4 mr-2" /> Tools <ChevronDown className="w-4 h-4 ml-1" />
+              {/* Action buttons */}
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setEditDialogOpen(true)} data-testid="button-edit-deal">
+                  <Edit className="w-4 h-4 mr-2" /> Edit
                 </Button>
-                {showToolsMenu && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-md border bg-popover shadow z-50">
-                    <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/minival?dealId=${deal.id}`} target="_blank" rel="noreferrer">MiniVal</a>
-                    <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/cim?dealId=${deal.id}`} target="_blank" rel="noreferrer">CIM Tool</a>
-                    <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/deck?dealId=${deal.id}`} target="_blank" rel="noreferrer">Deck Tool</a>
-                    <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/narrative?dealId=${deal.id}`} target="_blank" rel="noreferrer">Narrative</a>
-                  </div>
-                )}
+                <Button variant="outline" size="sm" onClick={() => setDeleteDialogOpen(true)} data-testid="button-delete-deal">
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete
+                </Button>
+                
+                {/* Tools dropdown */}
+                <div className="relative">
+                  <Button variant="outline" size="sm" onClick={() => setShowToolsMenu(v => !v)}>
+                    <Wrench className="w-4 h-4 mr-2" /> Tools <ChevronDown className="w-4 h-4 ml-1" />
+                  </Button>
+                  {showToolsMenu && (
+                    <div className="absolute right-0 mt-2 w-56 rounded-md border bg-popover shadow z-50">
+                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/minival?dealId=${deal.id}`} target="_blank" rel="noreferrer">MiniVal</a>
+                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/cim?dealId=${deal.id}`} target="_blank" rel="noreferrer">CIM Tool</a>
+                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/deck?dealId=${deal.id}`} target="_blank" rel="noreferrer">Deck Tool</a>
+                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/narrative?dealId=${deal.id}`} target="_blank" rel="noreferrer">Narrative</a>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
             {/* Command Bar */}
             <div className="flex">
               <div className="ml-auto flex items-center gap-2">
-                <Button variant="outline" size="sm" data-testid="button-schedule">
+                {/* <Button variant="outline" size="sm" data-testid="button-schedule">
                   <Calendar className="w-4 h-4 mr-2" /> Schedule
                 </Button>
                 <Button variant="outline" size="sm" data-testid="button-signature">
@@ -281,7 +476,7 @@ export default function DealDetails() {
                 </Button>
                 <Button variant="outline" size="sm" data-testid="button-update-stage">
                   <ArrowUpRight className="w-4 h-4 mr-2" /> Update Stage
-                </Button>
+                </Button> */}
                 <Button
                   variant="outline"
                   size="sm"
@@ -334,12 +529,12 @@ export default function DealDetails() {
                     ${parseFloat(deal.revenue).toLocaleString()}
                   </div>
                 </div>
-                <div>
+{/*                 <div>
                   <div className="text-xs text-muted-foreground mb-1">SDE</div>
                   <div className="text-base font-mono font-semibold" data-testid="text-sde">
                     ${deal.sde ? parseFloat(deal.sde).toLocaleString() : 'N/A'}
                   </div>
-                </div>
+                </div> */}
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">Valuation</div>
                   <div className="text-base font-semibold" data-testid="text-valuation">
@@ -348,7 +543,7 @@ export default function DealDetails() {
                 </div>
 
                 {/* Multiples (grouped) */}
-                <div>
+{/*                 <div>
                   <div className="text-sm font-semibold text-gray-600 mb-2">Multiples</div>
                   <div className="flex flex-wrap gap-2">
                     <span className="inline-flex items-center rounded-full border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700">
@@ -358,14 +553,14 @@ export default function DealDetails() {
                       Revenue&nbsp;{(deal as any).revenueMultiple ?? "—"}x
                     </span>
                   </div>
-                </div>
+                </div> */}
 
-                <div>
+                {/*<div>
                   <div className="text-xs text-muted-foreground mb-1">Commission</div>
                   <div className="text-base font-semibold" data-testid="text-commission">
                     {deal.commission}%
                   </div>
-                </div>
+                </div> */}
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">Age in Stage</div>
                   <div className="text-base font-semibold" data-testid="text-age">
@@ -531,20 +726,30 @@ export default function DealDetails() {
             <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">Activity Timeline</h2>
-                <div className="flex items-center gap-2">
-                  {["all", "task", "email", "meeting", "document", "system"].map((filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => setActiveFilter(filter)}
-                      className={cn(
-                        "px-3 py-1 text-xs font-medium rounded-full transition-colors",
-                        activeFilter === filter ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover-elevate"
-                      )}
-                      data-testid={`button-filter-${filter}`}
-                    >
-                      {filter.charAt(0).toUpperCase() + filter.slice(1)}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    {["all", "task", "note", "email", "meeting", "document", "system"].map((filter) => (
+                      <button
+                        key={filter}
+                        onClick={() => setActiveFilter(filter)}
+                        className={cn(
+                          "px-3 py-1 text-xs font-medium rounded-full transition-colors",
+                          activeFilter === filter ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover-elevate"
+                        )}
+                        data-testid={`button-filter-${filter}`}
+                      >
+                        {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setAddActivityDialogOpen(true)}
+                    data-testid="button-add-activity"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Activity
+                  </Button>
                 </div>
               </div>
 
@@ -569,7 +774,12 @@ export default function DealDetails() {
                           {activity.status}
                         </Badge>
                       </div>
-                      {activity.description && <p className="text-sm text-muted-foreground mb-2">{activity.description}</p>}
+                      {activity.description && (
+                        <div 
+                          className="text-sm text-muted-foreground mb-2" 
+                          dangerouslySetInnerHTML={{ __html: activity.description }}
+                        />
+                      )}
                       <div className="flex items-center gap-4 text-xs text-muted-foreground">
                         {activity.assignedTo && <span>{activity.assignedTo}</span>}
                         {activity.createdAt && <span>{new Date(activity.createdAt).toLocaleDateString()}</span>}
@@ -585,63 +795,6 @@ export default function DealDetails() {
                     </div>
                   </div>
                 ))}
-              </div>
-
-              {/* Add Task — split button with preset menu */}
-              <div className="pt-4 border-t border-border">
-                <div className="flex items-center gap-2 relative">
-                  <input
-                    type="text"
-                    placeholder="Add a new task..."
-                    className="flex-1 px-3 py-2 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                    data-testid="input-new-task"
-                    onKeyDown={async (e) => {
-                      if (e.key === "Enter" && (e.currentTarget as HTMLInputElement).value.trim()) {
-                        await createActivityMutation.mutateAsync({
-                          type: "task",
-                          title: (e.currentTarget as HTMLInputElement).value.trim(),
-                          status: "pending",
-                        });
-                        (e.currentTarget as HTMLInputElement).value = "";
-                      }
-                    }}
-                  />
-                  <Button size="sm" data-testid="button-add-task">
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="-ml-2"
-                    onClick={() => setShowPresetMenu((v) => !v)}
-                    aria-haspopup="menu"
-                    aria-expanded={showPresetMenu}
-                  >
-                    <ChevronDown className="w-4 h-4" />
-                  </Button>
-
-                  {showPresetMenu && (
-                    <div className="absolute right-0 top-[110%] w-56 rounded-md border bg-popover shadow z-50">
-                      {[
-                        { key: "email", label: "Email" },
-                        { key: "meeting", label: "Schedule meeting" },
-                        { key: "request_docs", label: "Request docs" },
-                        { key: "send_cim", label: "Send CIM" },
-                        { key: "send_nda", label: "Send NDA" },
-                        { key: "buyer_outreach", label: "Buyer outreach" },
-                        { key: "note", label: "Note" },
-                      ].map((i) => (
-                        <button
-                          key={i.key}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                          onClick={() => startTemplate(i.key)}
-                        >
-                          {i.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             </Card>
           </div>
@@ -662,78 +815,87 @@ export default function DealDetails() {
 
                 {/* Body */}
                 <div className="p-4 space-y-4 overflow-y-auto">
-                  {drawerMode === "buyers" && buyerMatches.map(({ match, party, contact }) => (
-                    <Card
-                      key={match.id}
-                      className="p-4 space-y-3 hover-elevate"
-                      data-testid={`card-buyer-${party.id}`}
-                    >
-                      <div className="flex items-start justify-between">
-                        {/* Only this header button navigates to Buying Party details */}
-                        <button
-                          type="button"
-                          className="flex items-center gap-2 text-left hover:opacity-90 focus:outline-none"
-                          onClick={() => navigate(`/buying-parties/${party.id}`)}
-                          data-testid={`link-buyer-${party.id}`}
-                        >
-                          <Building2 className="w-5 h-5 text-muted-foreground" />
-                          <span className="font-semibold">{party.name}</span>
-                        </button>
-                        <MatchStagePill matchId={match.id} stage={(match as any).stage ?? (match as any).status} />
-                      </div>
+                  {drawerMode === "buyers" && (
+                    <>
+                      {isLoadingBuyerMatches ? (
+                        <LoadingState variant="card" count={3} />
+                      ) : (
+                        <>
+                          {buyerMatches.map(({ match, party, contact }) => (
+                            <Card
+                              key={match.id}
+                              className="p-4 space-y-3 hover-elevate"
+                              data-testid={`card-buyer-${party.id}`}
+                            >
+                              <div className="flex items-start justify-between">
+                                {/* Only this header button navigates to Buying Party details */}
+                                <button
+                                  type="button"
+                                  className="flex items-center gap-2 text-left hover:opacity-90 focus:outline-none"
+                                  onClick={() => navigate(`/buying-parties/${party.id}`)}
+                                  data-testid={`link-buyer-${party.id}`}
+                                >
+                                  <Building2 className="w-5 h-5 text-muted-foreground" />
+                                  <span className="font-semibold">{party.name}</span>
+                                </button>
+                                <MatchStagePill matchId={match.id} stage={(match as any).stage ?? (match as any).status} />
+                              </div>
 
-                      <div className="space-y-2">
-                        {contact && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <User className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-muted-foreground">{contact.name}</span>
-                            {contact.role && <span className="text-xs text-muted-foreground">• {contact.role}</span>}
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 text-sm">
-                          <Target className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">
-                            Target: {(match as any).targetAcquisition || party.targetAcquisitionMin}-{party.targetAcquisitionMax}%
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <DollarSign className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground font-mono">
-                            ${(match as any).budget ? parseFloat((match as any).budget).toLocaleString() : 'Budget TBD'}
-                          </span>
-                        </div>
-                      </div>
+                              <div className="space-y-2">
+                                {contact && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <UserIcon className="w-4 h-4 text-muted-foreground" />
+                                    <span className="text-muted-foreground">{contact.name}</span>
+                                    {contact.role && <span className="text-xs text-muted-foreground">• {contact.role}</span>}
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Target className="w-4 h-4 text-muted-foreground" />
+                                  <span className="text-muted-foreground">
+                                    Target: {(match as any).targetAcquisition || party.targetAcquisitionMin}-{party.targetAcquisitionMax}%
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                  <DollarSign className="w-4 h-4 text-muted-foreground" />
+                                  <span className="text-muted-foreground font-mono">
+                                    ${(match as any).budget ? parseFloat((match as any).budget).toLocaleString() : 'Budget TBD'}
+                                  </span>
+                                </div>
+                              </div>
 
-                      {/* Expandable per-buyer checklist (now fully clickable) */}
-                      <details className="mt-2 group" data-testid={`details-checklist-${match.id}`}>
-                        <summary className="text-xs text-muted-foreground cursor-pointer select-none">
-                          Checklist
-                        </summary>
-                        <div className="mt-2">
-                          <BuyerChecklist matchId={match.id} />
-                        </div>
-                      </details>
+                              {/* Expandable per-buyer checklist (now fully clickable) */}
+                              <details className="mt-2 group" data-testid={`details-checklist-${match.id}`}>
+                                <summary className="text-xs text-muted-foreground cursor-pointer select-none">
+                                  Checklist
+                                </summary>
+                                <div className="mt-2">
+                                  <BuyerChecklist matchId={match.id} />
+                                </div>
+                              </details>
 
-                      <div className="flex gap-2 pt-2">
-                        <Button size="sm" variant="outline" className="flex-1" onClick={(e)=>{e.stopPropagation();}} data-testid={`button-email-buyer-${party.id}`}>
-                          <Mail className="w-4 h-4 mr-1" /> Email
-                        </Button>
-                        <Button size="sm" variant="outline" className="flex-1" onClick={(e)=>{e.stopPropagation();}} data-testid={`button-schedule-buyer-${party.id}`}>
-                          <Calendar className="w-4 h-4 mr-1" /> Schedule
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
+                              <div className="flex gap-2 pt-2">
+                                <Button size="sm" variant="outline" className="flex-1" onClick={(e)=>{e.stopPropagation();}} data-testid={`button-email-buyer-${party.id}`}>
+                                  <Mail className="w-4 h-4 mr-1" /> Email
+                                </Button>
+                                <Button size="sm" variant="outline" className="flex-1" onClick={(e)=>{e.stopPropagation();}} data-testid={`button-schedule-buyer-${party.id}`}>
+                                  <Calendar className="w-4 h-4 mr-1" /> Schedule
+                                </Button>
+                              </div>
+                            </Card>
+                          ))}
+                          {buyerMatches.length === 0 && (
+                            <div className="text-center text-sm text-muted-foreground py-8">No buyer matches yet</div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
 
                   {/* Deal-level Stage Checklist */}
                   {drawerMode === "checklist" && (
                     <Card className="p-4">
                       <StageChecklistDeal dealId={deal.id} stageLabel={stageLabel} />
                     </Card>
-                  )}
-
-                  {buyerMatches.length === 0 && drawerMode === "buyers" && (
-                    <div className="text-center text-sm text-muted-foreground py-8">No buyer matches yet</div>
                   )}
                 </div>
               </div>
@@ -788,6 +950,285 @@ export default function DealDetails() {
                 ))}
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Deal Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Deal</DialogTitle>
+            <DialogDescription>
+              Update the deal information below
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-companyName">Company Name</Label>
+                <Input
+                  id="edit-companyName"
+                  value={editFormData.companyName || ""}
+                  onChange={(e) => setEditFormData({ ...editFormData, companyName: e.target.value })}
+                  placeholder="Company name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-ownerId">Owner</Label>
+                <Select
+                  value={editFormData.ownerId || ""}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, ownerId: value })}
+                >
+                  <SelectTrigger id="edit-ownerId">
+                    <SelectValue placeholder="Select owner" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editFormData.description || ""}
+                onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                placeholder="Deal description"
+                rows={3}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-revenue">Revenue</Label>
+                <Input
+                  id="edit-revenue"
+                  type="number"
+                  value={editFormData.revenue || ""}
+                  onChange={(e) => setEditFormData({ ...editFormData, revenue: e.target.value })}
+                  placeholder="Annual revenue"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-sde">SDE</Label>
+                <Input
+                  id="edit-sde"
+                  type="number"
+                  value={editFormData.sde || ""}
+                  onChange={(e) => setEditFormData({ ...editFormData, sde: e.target.value })}
+                  placeholder="Seller's discretionary earnings"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-valuationMin">Valuation Min</Label>
+                <Input
+                  id="edit-valuationMin"
+                  type="number"
+                  value={editFormData.valuationMin || ""}
+                  onChange={(e) => setEditFormData({ ...editFormData, valuationMin: e.target.value })}
+                  placeholder="Minimum valuation"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-valuationMax">Valuation Max</Label>
+                <Input
+                  id="edit-valuationMax"
+                  type="number"
+                  value={editFormData.valuationMax || ""}
+                  onChange={(e) => setEditFormData({ ...editFormData, valuationMax: e.target.value })}
+                  placeholder="Maximum valuation"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-stage">Stage</Label>
+              <Select
+                value={editFormData.stage || ""}
+                onValueChange={(value) => setEditFormData({ ...editFormData, stage: value as "onboarding" | "valuation" | "buyer_matching" | "due_diligence" | "sold" })}
+              >
+                <SelectTrigger id="edit-stage">
+                  <SelectValue placeholder="Select stage" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="onboarding">Onboarding</SelectItem>
+                  <SelectItem value="valuation">Valuation</SelectItem>
+                  <SelectItem value="buyer_matching">Buyer Matching</SelectItem>
+                  <SelectItem value="due_diligence">Due Diligence</SelectItem>
+                  <SelectItem value="sold">Sold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => updateDealMutation.mutate(editFormData)}
+              disabled={updateDealMutation.isPending}
+            >
+              {updateDealMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the deal
+              "{deal?.companyName}" and all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteDealMutation.mutate()}
+              disabled={deleteDealMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteDealMutation.isPending ? "Deleting..." : "Delete Deal"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Add Activity Dialog */}
+      <Dialog open={addActivityDialogOpen} onOpenChange={setAddActivityDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Add Activity</DialogTitle>
+            <DialogDescription>
+              Add a new activity to the timeline
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="activity-title">
+                Title <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="activity-title"
+                value={newActivityData.title}
+                onChange={(e) => setNewActivityData({ ...newActivityData, title: e.target.value })}
+                placeholder="e.g., Follow up with seller"
+                data-testid="input-activity-title"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="activity-type">Type</Label>
+              <Select
+                value={newActivityData.type}
+                onValueChange={(value) => setNewActivityData({ ...newActivityData, type: value })}
+              >
+                <SelectTrigger id="activity-type" data-testid="select-activity-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="note">Note</SelectItem>
+                  <SelectItem value="task">Task</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="meeting">Meeting</SelectItem>
+                  <SelectItem value="document">Document</SelectItem>
+                  <SelectItem value="system">System</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="activity-description">Description</Label>
+              <Textarea
+                id="activity-description"
+                value={newActivityData.description}
+                onChange={(e) => setNewActivityData({ ...newActivityData, description: e.target.value })}
+                placeholder="Add additional details..."
+                rows={3}
+                data-testid="textarea-activity-description"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="activity-due-date">Due Date</Label>
+                <Input
+                  id="activity-due-date"
+                  type="date"
+                  value={newActivityData.dueDate}
+                  onChange={(e) => setNewActivityData({ ...newActivityData, dueDate: e.target.value })}
+                  data-testid="input-activity-due-date"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="activity-assigned-to">Assigned To</Label>
+                <Input
+                  id="activity-assigned-to"
+                  value={newActivityData.assignedTo}
+                  onChange={(e) => setNewActivityData({ ...newActivityData, assignedTo: e.target.value })}
+                  placeholder="e.g., John Doe"
+                  data-testid="input-activity-assigned-to"
+                />
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAddActivityDialogOpen(false);
+                setNewActivityData({
+                  title: "",
+                  type: "note",
+                  description: "",
+                  dueDate: "",
+                  assignedTo: "",
+                });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const payload: any = {
+                  title: newActivityData.title,
+                  type: newActivityData.type,
+                  status: "pending",
+                };
+                
+                if (newActivityData.description) {
+                  payload.description = newActivityData.description;
+                }
+                
+                if (newActivityData.dueDate) {
+                  payload.dueDate = new Date(newActivityData.dueDate).toISOString();
+                }
+                
+                if (newActivityData.assignedTo) {
+                  payload.assignedTo = newActivityData.assignedTo;
+                }
+                
+                createActivityMutation.mutate(payload);
+              }}
+              disabled={!newActivityData.title || createActivityMutation.isPending}
+              data-testid="button-save-activity"
+            >
+              {createActivityMutation.isPending ? "Adding..." : "Add Activity"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
