@@ -141,10 +141,3 @@ export default function Register() {
   );
 }
 
-
-
-
-
-
-
-
