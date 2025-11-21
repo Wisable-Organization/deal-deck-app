@@ -160,6 +160,7 @@ export default function DealDetails() {
         valuationMin: deal.valuationMin,
         valuationMax: deal.valuationMax,
         stage: deal.stage,
+        healthScore: deal.healthScore,
         ownerId: deal.ownerId,
       });
     }
@@ -270,6 +271,32 @@ export default function DealDetails() {
       toast({
         title: "Error",
         description: getErrorMessage(error, "Failed to create activity"),
+        variant: "destructive",
+      });
+    }
+  });
+
+  const updateActivityMutation = useMutation({
+    mutationFn: async ({ activityId, payload }: { activityId: string; payload: Partial<Activity> }) => {
+      const res = await fetch(`/api/activities/${activityId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw res;
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/activities", { entityId: dealId }] });
+      toast({
+        title: "Activity updated",
+        description: "The activity status has been updated",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: getErrorMessage(error, "Failed to update activity"),
         variant: "destructive",
       });
     }
@@ -435,9 +462,6 @@ export default function DealDetails() {
 
               {/* Action buttons */}
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setEditDialogOpen(true)} data-testid="button-edit-deal">
-                  <Edit className="w-4 h-4 mr-2" /> Edit
-                </Button>
                 <Button variant="outline" size="sm" onClick={() => setDeleteDialogOpen(true)} data-testid="button-delete-deal">
                   <Trash2 className="w-4 h-4 mr-2" /> Delete
                 </Button>
@@ -504,9 +528,14 @@ export default function DealDetails() {
         <div className="flex gap-6">
           {/* Left Column - Deal Overview */}
           <div className="w-[360px] shrink-0 space-y-4">
-            {/* Stage Badge */}
-            <Badge className={cn("text-sm px-4 py-1.5 w-fit", stageColor)} data-testid="badge-stage">{stageLabel}</Badge>
-            
+            {/* Stage Badge and Edit Button Row */}
+            <div className="flex items-center justify-between">
+              <Badge className={cn("text-sm px-4 py-1.5 w-fit", stageColor)} data-testid="badge-stage">{stageLabel}</Badge>
+              <Button variant="outline" size="sm" onClick={() => setEditDialogOpen(true)} data-testid="button-edit-deal">
+                <Edit className="w-4 h-4 mr-2" /> Edit
+              </Button>
+            </div>
+
             <Card className={cn("p-6 space-y-4 bg-white dark:bg-neutral-900 border border-border","border-l-[6px]",healthBorderClass)}>
               <h2 className="text-lg font-semibold">Deal Snapshot</h2>
 
@@ -785,12 +814,19 @@ export default function DealDetails() {
                         {activity.createdAt && <span>{new Date(activity.createdAt).toLocaleDateString()}</span>}
                       </div>
                       <div className="flex items-center gap-2 mt-2">
-                        <Button size="sm" variant="ghost" className="h-7 text-xs" data-testid={`button-mark-done-${activity.id}`}>
-                          Mark Done
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() => updateActivityMutation.mutate({ activityId: activity.id, payload: { status: "completed" } })}
+                          disabled={activity.status === "completed" || (updateActivityMutation.isPending && updateActivityMutation.variables?.activityId === activity.id)}
+                          data-testid={`button-mark-done-${activity.id}`}
+                        >
+                          {updateActivityMutation.isPending && updateActivityMutation.variables?.activityId === activity.id ? "Updating..." : "Mark Done"}
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs" data-testid={`button-comment-${activity.id}`}>
+                        {/*<Button size="sm" variant="ghost" className="h-7 text-xs" data-testid={`button-comment-${activity.id}`}>
                           Comment
-                        </Button>
+                        </Button>*/}
                       </div>
                     </div>
                   </div>
@@ -1051,23 +1087,37 @@ export default function DealDetails() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-stage">Stage</Label>
-              <Select
-                value={editFormData.stage || ""}
-                onValueChange={(value) => setEditFormData({ ...editFormData, stage: value as "onboarding" | "valuation" | "buyer_matching" | "due_diligence" | "sold" })}
-              >
-                <SelectTrigger id="edit-stage">
-                  <SelectValue placeholder="Select stage" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="onboarding">Onboarding</SelectItem>
-                  <SelectItem value="valuation">Valuation</SelectItem>
-                  <SelectItem value="buyer_matching">Buyer Matching</SelectItem>
-                  <SelectItem value="due_diligence">Due Diligence</SelectItem>
-                  <SelectItem value="sold">Sold</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-stage">Stage</Label>
+                <Select
+                  value={editFormData.stage || ""}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, stage: value as "onboarding" | "valuation" | "buyer_matching" | "due_diligence" | "sold" })}
+                >
+                  <SelectTrigger id="edit-stage">
+                    <SelectValue placeholder="Select stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="onboarding">Onboarding</SelectItem>
+                    <SelectItem value="valuation">Valuation</SelectItem>
+                    <SelectItem value="buyer_matching">Buyer Matching</SelectItem>
+                    <SelectItem value="due_diligence">Due Diligence</SelectItem>
+                    <SelectItem value="sold">Sold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-healthScore">Health Score (%)</Label>
+                <Input
+                  id="edit-healthScore"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={editFormData.healthScore || ""}
+                  onChange={(e) => setEditFormData({ ...editFormData, healthScore: parseInt(e.target.value) || 0 })}
+                  placeholder="0-100"
+                />
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-2">

@@ -21,27 +21,33 @@ export default function BuyerChecklist({ matchId, expandedDefault = false }: { m
     staleTime: 10_000,
   });
 
-  // Mutation to update the match stage
-  const updateStageMutation = useMutation({
-    mutationFn: async (stage: string) => {
+  // Mutation to update the match stages
+  const updateStagesMutation = useMutation({
+    mutationFn: async (stages: string[]) => {
+      const stagesString = stages.join(',');
       const res = await fetch(`/api/matches/${matchId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage }),
+        body: JSON.stringify({ stages: stagesString }),
       });
-      if (!res.ok) throw new Error("Failed to update stage");
+      if (!res.ok) throw new Error("Failed to update stages");
       return res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/matches", matchId] });
+      qc.invalidateQueries({ queryKey: ["/api/deals", match?.dealId, "buyers"] });
     },
   });
 
-  const currentStage = match?.stage || "new";
-  const isUpdating = updateStageMutation.isPending;
+  const currentStages = match?.stage ? match.stage.split(',').filter(Boolean) : [];
+  const isUpdating = updateStagesMutation.isPending;
 
-  const handleStageChange = (stageKey: string) => {
-    updateStageMutation.mutate(stageKey);
+  const handleStageChange = (stageKey: string, checked: boolean) => {
+    const newStages = checked
+      ? [...currentStages, stageKey]
+      : currentStages.filter(s => s !== stageKey);
+
+    updateStagesMutation.mutate(newStages);
   };
 
   return (
@@ -59,16 +65,15 @@ export default function BuyerChecklist({ matchId, expandedDefault = false }: { m
           <label
             key={stage.key}
             className="flex items-center gap-2 px-2 py-1 rounded hover:bg-muted cursor-pointer transition-colors"
-            data-testid={`radio-${matchId}-${stage.key}`}
+            data-testid={`checkbox-${matchId}-${stage.key}`}
           >
             <input
-              type="radio"
-              name={`stage-${matchId}`}
+              type="checkbox"
               className="accent-foreground cursor-pointer"
-              checked={currentStage === stage.key}
-              onChange={() => handleStageChange(stage.key)}
+              checked={currentStages.includes(stage.key)}
+              onChange={(e) => handleStageChange(stage.key, e.target.checked)}
               disabled={isUpdating}
-              data-testid={`radio-input-${matchId}-${stage.key}`}
+              data-testid={`checkbox-input-${matchId}-${stage.key}`}
             />
             <span className="text-sm">{stage.label}</span>
           </label>
