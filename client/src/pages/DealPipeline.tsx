@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Deal, dealStages, Document, User } from "@shared/schema";
 import { DealCard } from "@/components/DealCard";
@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 
 const stageLabels: Record<string, string> = {
@@ -32,6 +33,9 @@ export default function DealPipeline() {
   const { toast } = useToast();
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [showNewDealDialog, setShowNewDealDialog] = useState(false);
+  const [showRevenueFilter, setShowRevenueFilter] = useState(false);
+  const [revenueFilter, setRevenueFilter] = useState<[number, number] | null>(null);
+  const [revenueFilterActive, setRevenueFilterActive] = useState(false);
   const [newDealData, setNewDealData] = useState({
     companyName: "",
     revenue: "",
@@ -50,6 +54,45 @@ export default function DealPipeline() {
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ["/api/users"],
   });
+
+  const revenueBounds = useMemo(() => {
+    if (deals.length === 0) return { min: 0, max: 10000000 };
+
+    const revenues = deals.map(deal => parseFloat(deal.revenue)).filter(r => !isNaN(r) && r > 0);
+    if (revenues.length === 0) return { min: 0, max: 10000000 };
+
+    const min = Math.min(...revenues);
+    const max = Math.max(...revenues);
+
+    // Round to nearest million for better slider UX
+    const roundedMin = Math.floor(min / 1000000) * 1000000;
+    const roundedMax = Math.ceil(max / 1000000) * 1000000;
+
+    return {
+      min: Math.max(0, roundedMin), // Ensure min is not negative
+      max: Math.max(roundedMax, 1000000), // Ensure max is at least 1M
+    };
+  }, [deals]);
+
+  // Initialize revenue filter bounds when deals are first loaded
+  useEffect(() => {
+    if (deals.length > 0 && revenueFilter === null) {
+      setRevenueFilter([revenueBounds.min, revenueBounds.max]);
+    }
+  }, [deals.length, revenueBounds.min, revenueBounds.max]);
+
+  const filteredDeals = useMemo(() => {
+    if (!revenueFilterActive || !revenueFilter) {
+      return deals;
+    }
+
+    return deals.filter(deal => {
+      const revenue = parseFloat(deal.revenue);
+      if (isNaN(revenue) || revenue <= 0) return false;
+
+      return revenue >= revenueFilter[0] && revenue <= revenueFilter[1];
+    });
+  }, [deals, revenueFilter, revenueFilterActive]);
 
   const updateStageMutation = useMutation({
     mutationFn: async ({ dealId, stage }: { dealId: string; stage: string }) => {
@@ -186,7 +229,7 @@ export default function DealPipeline() {
   };
 
   const getDealsByStage = (stage: string) => {
-    return deals.filter((deal) => deal.stage === stage);
+    return filteredDeals.filter((deal) => deal.stage === stage);
   };
 
   if (isLoading) {
@@ -204,13 +247,18 @@ export default function DealPipeline() {
         <div>
           <h2 className="text-2xl font-semibold text-foreground">Deal Pipeline</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {deals.length} deals across {dealStages.length} stages
+            {filteredDeals.length}{revenueFilterActive ? ` of ${deals.length}` : ''} deals across {dealStages.length} stages{revenueFilterActive ? ' (filtered)' : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="default" data-testid="button-filter">
+          <Button
+            variant={revenueFilterActive ? "default" : "outline"}
+            size="default"
+            data-testid="button-filter"
+            onClick={() => setShowRevenueFilter(true)}
+          >
             <Filter className="w-4 h-4 mr-2" />
-            Revenue Range
+            Revenue Range{revenueFilterActive && revenueFilter ? ` (${revenueFilter[0].toLocaleString()} - ${revenueFilter[1].toLocaleString()})` : ''}
           </Button>
           <Button variant="outline" size="default" data-testid="button-industry">
             <Filter className="w-4 h-4 mr-2" />
@@ -363,6 +411,69 @@ export default function DealPipeline() {
             >
               {createDealMutation.isPending ? "Creating..." : "Create Deal"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revenue Filter Dialog */}
+      <Dialog open={showRevenueFilter} onOpenChange={setShowRevenueFilter}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Filter by Revenue Range</DialogTitle>
+            <DialogDescription>
+              Set the minimum and maximum revenue range to filter deals.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Revenue Range</Label>
+                <span className="text-sm text-muted-foreground">
+                  ${(revenueFilter?.[0] ?? revenueBounds.min).toLocaleString()} - ${(revenueFilter?.[1] ?? revenueBounds.max).toLocaleString()}
+                </span>
+              </div>
+              <Slider
+                value={revenueFilter ?? [revenueBounds.min, revenueBounds.max]}
+                onValueChange={(value) => setRevenueFilter(value as [number, number])}
+                min={revenueBounds.min}
+                max={revenueBounds.max}
+                step={100000}
+                className="w-full"
+                showRightCircle={true}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>${revenueBounds.min.toLocaleString()}</span>
+                <span>${revenueBounds.max.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-between gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRevenueFilter([revenueBounds.min, revenueBounds.max]);
+                setRevenueFilterActive(false);
+                setShowRevenueFilter(false);
+              }}
+            >
+              Clear Filter
+            </Button>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowRevenueFilter(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setRevenueFilterActive(true);
+                  setShowRevenueFilter(false);
+                }}
+              >
+                Apply Filter
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

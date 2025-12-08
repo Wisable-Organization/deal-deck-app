@@ -43,14 +43,18 @@ export default function MatchStagePill({
   onChanged?: (next: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const current = MATCH_STAGES.find((s) => s.key === stage)?.label ?? "New";
+
+  // Handle comma-separated stages - show the first one or "New" if none
+  const stages = stage ? stage.split(',').filter(Boolean) : [];
+  const currentStage = stages.length > 0 ? stages[0] : "new";
+  const current = MATCH_STAGES.find((s) => s.key === currentStage)?.label ?? "New";
 
   async function setStage(nextKey: string) {
-    // Minimal inline update. Backend: PATCH /api/matches/:id { stage: nextKey }
+    // For MatchStagePill, when selecting a stage, set it as the single stage
     await fetch(`/api/matches/${matchId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage: nextKey }),
+      body: JSON.stringify({ stages: nextKey }),
     }).catch(() => {}); // swallow for MVP
     onChanged?.(nextKey);
     setOpen(false);
@@ -76,7 +80,7 @@ export default function MatchStagePill({
               key={s.key}
               className={cn(
                 "w-full px-3 py-2 text-left text-xs hover:bg-muted",
-                s.key === stage && "bg-muted"
+                s.key === currentStage && "bg-muted"
               )}
               onClick={() => setStage(s.key)}
             >
