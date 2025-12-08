@@ -115,6 +115,11 @@ export default function DealDetails() {
     assignedTo: "",
   });
 
+  const [addBuyerDialogOpen, setAddBuyerDialogOpen] = useState(false);
+  const [addingBuyerId, setAddingBuyerId] = useState<string | null>(null);
+  const [deleteMatchDialogOpen, setDeleteMatchDialogOpen] = useState(false);
+  const [matchToDelete, setMatchToDelete] = useState<{ id: string; partyName: string } | null>(null);
+
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<Deal>>({});
@@ -200,6 +205,16 @@ export default function DealDetails() {
     queryKey: ["/api/deals", dealId, "buyers"],
     queryFn: async () => {
       const res = await fetch(`/api/deals/${dealId}/buyers`);
+      if (!res.ok) throw res;
+      return res.json();
+    },
+    enabled: !!dealId && !isDeleting,
+  });
+
+  const { data: allBuyingParties = [] } = useQuery<BuyingParty[]>({
+    queryKey: ["/api/buying-parties"],
+    queryFn: async () => {
+      const res = await fetch("/api/buying-parties");
       if (!res.ok) throw res;
       return res.json();
     },
@@ -386,6 +401,65 @@ export default function DealDetails() {
     }
   });
 
+  const createBuyerMatchMutation = useMutation({
+    mutationFn: async (buyingPartyId: string) => {
+      setAddingBuyerId(buyingPartyId);
+      const res = await fetch("/api/deal-buyer-matches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dealId: dealId,
+          buyingPartyId: buyingPartyId,
+          status: "interested",
+          stage: "new"
+        })
+      });
+      if (!res.ok) throw res;
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/deals", dealId, "buyers"] });
+      toast({
+        title: "Buyer match created",
+        description: "The buyer has been matched to this deal",
+      });
+      setAddBuyerDialogOpen(false);
+      setAddingBuyerId(null);
+    },
+    onError: (error: any) => {
+      setAddingBuyerId(null);
+      toast({
+        title: "Error",
+        description: getErrorMessage(error, "Failed to create buyer match"),
+        variant: "destructive",
+      });
+    }
+  });
+
+  const deleteBuyerMatchMutation = useMutation({
+    mutationFn: async (matchId: string) => {
+      const res = await fetch(`/api/deal-buyer-matches/${matchId}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw res;
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/deals", dealId, "buyers"] });
+      toast({
+        title: "Buyer unmatched",
+        description: "The buyer has been removed from this deal",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: getErrorMessage(error, "Failed to unmatch buyer"),
+        variant: "destructive",
+      });
+    }
+  });
+
   // pinned docs by best-effort name match
   const pinned = useMemo(() => {
     return {
@@ -395,6 +469,12 @@ export default function DealDetails() {
       nda_pdf: findDocByName(documents, "nda") || findDocByName(documents, "non-disclosure"),
     } as Partial<Record<"valuation_excel"|"valuation_ppt"|"cim_ppt"|"nda_pdf", Document>>;
   }, [documents]);
+
+  // Filter out buying parties that are already matched to this deal
+  const availableBuyingParties = useMemo(() => {
+    const matchedPartyIds = new Set(buyerMatches.map(match => match.party.id));
+    return allBuyingParties.filter(party => !matchedPartyIds.has(party.id));
+  }, [buyerMatches, allBuyingParties]);
 
   // debounce notes autosave (500ms)
   useEffect(() => {
@@ -525,9 +605,9 @@ export default function DealDetails() {
       </div>
 
       <div className="max-w-[1920px] mx-auto px-6 lg:px-8 py-6">
-        <div className="flex gap-6">
+        <div className={`grid gap-6 ${showDrawer ? 'lg:grid-cols-[360px_1fr_420px] grid-cols-1' : 'grid-cols-[360px_1fr]'}`}>
           {/* Left Column - Deal Overview */}
-          <div className="w-[360px] shrink-0 space-y-4">
+          <div className={`w-[360px] space-y-4 ${showDrawer ? 'lg:block hidden' : ''}`}>
             {/* Stage Badge and Edit Button Row */}
             <div className="flex items-center justify-between">
               <Badge className={cn("text-sm px-4 py-1.5 w-fit", stageColor)} data-testid="badge-stage">{stageLabel}</Badge>
@@ -751,7 +831,7 @@ export default function DealDetails() {
           </div>
 
           {/* Middle Column - Activity Timeline */}
-          <div className="flex-1 space-y-4">
+          <div className="space-y-4">
             <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">Activity Timeline</h2>
@@ -837,10 +917,10 @@ export default function DealDetails() {
 
           {/* Right Column (Drawer) */}
           {showDrawer && (
-            <div className="w-[420px] shrink-0">
+            <div className="lg:w-[420px] w-full">
               <div className="h-full bg-background border-l border-border rounded-none">
                 {/* Header */}
-                <div className="sticky top-[4rem] z-10 bg-background border-b border-border p-4 flex items-center justify-between">
+                <div className="bg-background border-b border-border p-4 flex items-center justify-between">
                   <h2 className="text-lg font-semibold">
                     {drawerMode === "buyers" ? "Buyer Matches" : "Stage Checklist"}
                   </h2>
@@ -848,6 +928,20 @@ export default function DealDetails() {
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
+
+                {/* Add Buyer Party Button - only show for buyers mode */}
+                {drawerMode === "buyers" && (
+                  <div className="p-4 bg-background/95 flex justify-end">
+                    <Button
+                      variant="outline"
+                      onClick={() => setAddBuyerDialogOpen(true)}
+                      data-testid="button-add-buyer-party"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Buyer Party
+                    </Button>
+                  </div>
+                )}
 
                 {/* Body */}
                 <div className="p-4 space-y-4 overflow-y-auto">
@@ -874,7 +968,22 @@ export default function DealDetails() {
                                   <Building2 className="w-5 h-5 text-muted-foreground" />
                                   <span className="font-semibold">{party.name}</span>
                                 </button>
-                                <MatchStagePill matchId={match.id} stage={(match as any).stage ?? (match as any).status} />
+                                <div className="flex items-center gap-2">
+                                  <MatchStagePill matchId={match.id} stage={(match as any).stage ?? (match as any).status} />
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMatchToDelete({ id: match.id, partyName: party.name });
+                                      setDeleteMatchDialogOpen(true);
+                                    }}
+                                    data-testid={`button-unmatch-${party.id}`}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
                               </div>
 
                               <div className="space-y-2">
@@ -894,7 +1003,7 @@ export default function DealDetails() {
                                 <div className="flex items-center gap-2 text-sm">
                                   <DollarSign className="w-4 h-4 text-muted-foreground" />
                                   <span className="text-muted-foreground font-mono">
-                                    ${(match as any).budget ? parseFloat((match as any).budget).toLocaleString() : 'Budget TBD'}
+                                    ${(match as any).budget ? parseFloat((match as any).budget).toLocaleString() : 'Check Size TBD'}
                                   </span>
                                 </div>
                               </div>
@@ -989,6 +1098,34 @@ export default function DealDetails() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Match Confirmation Dialog */}
+      <AlertDialog open={deleteMatchDialogOpen} onOpenChange={setDeleteMatchDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unmatch Buyer</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to unmatch {matchToDelete?.partyName} from this deal? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (matchToDelete) {
+                  deleteBuyerMatchMutation.mutate(matchToDelete.id);
+                  setDeleteMatchDialogOpen(false);
+                  setMatchToDelete(null);
+                }
+              }}
+              disabled={deleteBuyerMatchMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteBuyerMatchMutation.isPending ? "Unmatching..." : "Unmatch"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit Deal Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
@@ -1156,6 +1293,61 @@ export default function DealDetails() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add Buyer Party Dialog */}
+      <Dialog open={addBuyerDialogOpen} onOpenChange={setAddBuyerDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Add Buyer Party</DialogTitle>
+            <DialogDescription>
+              Select a buyer party to match with this deal
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {availableBuyingParties.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-4 text-center">
+                No available buyer parties to add
+              </div>
+            ) : (
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {availableBuyingParties.map((party) => (
+                  <div
+                    key={party.id}
+                    className="flex items-center justify-between p-3 border rounded-md hover-elevate cursor-pointer"
+                    onClick={() => {
+                      if (addingBuyerId === null) {
+                        createBuyerMatchMutation.mutate(party.id);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Building2 className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <div className="font-medium text-sm">{party.name}</div>
+                        {party.targetAcquisitionMin && party.targetAcquisitionMax && (
+                          <div className="text-xs text-muted-foreground">
+                            Target: {party.targetAcquisitionMin}-{party.targetAcquisitionMax}%
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={addingBuyerId !== null}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        createBuyerMatchMutation.mutate(party.id);
+                      }}
+                    >
+                      {addingBuyerId === party.id ? "Adding..." : "Add"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Activity Dialog */}
       <Dialog open={addActivityDialogOpen} onOpenChange={setAddActivityDialogOpen}>

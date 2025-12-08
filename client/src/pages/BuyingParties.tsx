@@ -3,9 +3,10 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { BuyingParty, Contact } from "@shared/schema";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Plus, CheckSquare, Trash2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { DataTable, Column } from "@/components/DataTable";
 
 // Extended BuyingParty type with contacts from API
 type BuyingPartyWithContacts = BuyingParty & {
@@ -18,9 +19,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+
 
 export default function BuyingParties() {
   const navigate = useNavigate();
@@ -34,6 +45,11 @@ export default function BuyingParties() {
     budgetMax: "",
     timeline: "",
   });
+
+  // Selection state
+  const [selectedParties, setSelectedParties] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const { data: parties = [], isLoading } = useQuery<BuyingPartyWithContacts[]>({
     queryKey: ["/api/buying-parties"],
@@ -95,6 +111,40 @@ export default function BuyingParties() {
     },
   });
 
+  const deletePartiesMutation = useMutation({
+    mutationFn: async (partyIds: string[]) => {
+      // Delete parties one by one (could be optimized with batch endpoint if available)
+      const results = await Promise.allSettled(
+        partyIds.map(id => apiRequest("DELETE", `/api/buying-parties/${id}`))
+      );
+
+      const failures = results.filter(result => result.status === 'rejected');
+      if (failures.length > 0) {
+        throw new Error(`Failed to delete ${failures.length} of ${partyIds.length} parties`);
+      }
+
+      return results.length;
+    },
+    onSuccess: (deletedCount) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/buying-parties"] });
+      setSelectedParties(new Set());
+      setSelectMode(false);
+      setShowDeleteDialog(false);
+      toast({
+        title: "Parties deleted",
+        description: `${deletedCount} buying ${deletedCount === 1 ? 'party' : 'parties'} ${deletedCount === 1 ? 'has' : 'have'} been permanently deleted.`,
+      });
+    },
+    onError: (error) => {
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete parties. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleCreateParty = () => {
     if (!newPartyData.name.trim()) {
       toast({
@@ -106,6 +156,110 @@ export default function BuyingParties() {
     }
     createPartyMutation.mutate(newPartyData);
   };
+
+  // Handle selection changes
+  const handleSelectParty = (partyId: string, checked: boolean) => {
+    setSelectedParties(prev => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(partyId);
+      } else {
+        newSet.delete(partyId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedParties(new Set(parties.map(party => party.id)));
+    } else {
+      setSelectedParties(new Set());
+    }
+  };
+
+  // Define table columns
+  const columns: Column<BuyingPartyWithContacts>[] = [
+    {
+      key: "name",
+      header: "Name",
+      sortable: true,
+      filterable: true,
+      render: (value, party) => (
+        <div className="font-medium text-foreground" data-testid={`text-name-${party.id}`}>
+          {value}
+        </div>
+      ),
+      filterValue: (party) => party.name,
+      sortValue: (party) => party.name.toLowerCase(),
+    },
+    {
+      key: "targetAcquisitionMin",
+      header: "Target Acquisition",
+      sortable: true,
+      filterable: true,
+      render: (value, party) => (
+        <span data-testid={`text-acquisition-${party.id}`}>
+          {party.targetAcquisitionMin && party.targetAcquisitionMax
+            ? `${party.targetAcquisitionMin}-${party.targetAcquisitionMax}%`
+            : "N/A"}
+        </span>
+      ),
+      filterValue: (party) =>
+        party.targetAcquisitionMin && party.targetAcquisitionMax
+          ? `${party.targetAcquisitionMin}-${party.targetAcquisitionMax}%`
+          : "N/A",
+      sortValue: (party) => party.targetAcquisitionMin || 0,
+    },
+    {
+      key: "budgetMin",
+      header: "Budget Range",
+      sortable: true,
+      filterable: true,
+      render: (value, party) => (
+        <span className="font-mono" data-testid={`text-budget-${party.id}`}>
+          {party.budgetMin && party.budgetMax
+            ? `$${parseFloat(party.budgetMin).toLocaleString()} - $${parseFloat(party.budgetMax).toLocaleString()}`
+            : "N/A"}
+        </span>
+      ),
+      filterValue: (party) =>
+        party.budgetMin && party.budgetMax
+          ? `$${parseFloat(party.budgetMin).toLocaleString()} - $${parseFloat(party.budgetMax).toLocaleString()}`
+          : "N/A",
+      sortValue: (party) => party.budgetMin ? parseFloat(party.budgetMin) : 0,
+    },
+    {
+      key: "timeline",
+      header: "Timeline",
+      sortable: true,
+      filterable: true,
+      render: (value, party) => (
+        <span data-testid={`text-timeline-${party.id}`}>
+          {value || "N/A"}
+        </span>
+      ),
+      filterValue: (party) => party.timeline || "N/A",
+      sortValue: (party) => party.timeline || "",
+    },
+    {
+      key: "contacts",
+      header: "Contacts",
+      sortable: true,
+      filterable: true,
+      render: (value, party) => {
+        const contactNames = party.contacts?.map(c => c.name).join(", ") || "";
+        return (
+          <span className="line-clamp-1" title={contactNames} data-testid={`text-contacts-${party.id}`}>
+            {contactNames || "No contacts"}
+          </span>
+        );
+      },
+      filterValue: (party) => party.contacts?.map(c => c.name).join(", ") || "No contacts",
+      sortValue: (party) => party.contacts?.length || 0,
+    },
+  ];
+
 
   if (isLoading) {
     return (
@@ -124,86 +278,63 @@ export default function BuyingParties() {
           <h2 className="text-2xl font-semibold text-foreground">Buying Parties</h2>
           <p className="text-sm text-muted-foreground mt-1">
             {parties.length} potential buyers
+            {selectedParties.size > 0 && (
+              <span className="ml-2 text-primary font-medium">
+                ({selectedParties.size} selected)
+              </span>
+            )}
           </p>
         </div>
-        <Button 
-          size="default" 
-          data-testid="button-new-buyer"
-          onClick={() => setShowNewPartyDialog(true)}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          New Party
-        </Button>
+        <div className="flex gap-2">
+          {selectedParties.size > 0 && (
+            <Button
+              variant="destructive"
+              size="default"
+              onClick={() => setShowDeleteDialog(true)}
+              disabled={deletePartiesMutation.isPending}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete ({selectedParties.size})
+            </Button>
+          )}
+          <Button
+            variant={selectMode ? "default" : "outline"}
+            size="default"
+            onClick={() => {
+              setSelectMode(!selectMode);
+              if (selectMode) {
+                // Clear selection when exiting select mode
+                setSelectedParties(new Set());
+              }
+            }}
+          >
+            <CheckSquare className="w-4 h-4 mr-2" />
+            {selectMode ? "Cancel Select" : "Select"}
+          </Button>
+          <Button
+            size="default"
+            data-testid="button-new-buyer"
+            onClick={() => setShowNewPartyDialog(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            New Party
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-muted/30 border-b border-border">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Name
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Target Acquisition
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Budget Range
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Timeline
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Contacts
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {parties.map((party) => {
-              const contactNames = party.contacts?.map(c => c.name).join(", ") || "";
-              
-              return (
-                <tr
-                  key={party.id}
-                  onClick={() => navigate(`/buying-parties/${party.id}`)}
-                  className="hover:bg-muted/20 transition-colors cursor-pointer"
-                  data-testid={`row-buyer-${party.id}`}
-                >
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground" data-testid={`text-name-${party.id}`}>
-                      {party.name}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-muted-foreground" data-testid={`text-acquisition-${party.id}`}>
-                    {party.targetAcquisitionMin && party.targetAcquisitionMax
-                      ? `${party.targetAcquisitionMin}-${party.targetAcquisitionMax}%`
-                      : "N/A"}
-                  </td>
-                  <td className="px-4 py-4 text-sm font-mono text-muted-foreground" data-testid={`text-budget-${party.id}`}>
-                    {party.budgetMin && party.budgetMax
-                      ? `$${parseFloat(party.budgetMin).toLocaleString()} - $${parseFloat(party.budgetMax).toLocaleString()}`
-                      : "N/A"}
-                  </td>
-                  <td className="px-4 py-4 text-sm text-muted-foreground" data-testid={`text-timeline-${party.id}`}>
-                    {party.timeline || "N/A"}
-                  </td>
-                  <td className="px-4 py-4 text-sm text-muted-foreground" data-testid={`text-contacts-${party.id}`}>
-                    <span className="line-clamp-1" title={contactNames}>
-                      {contactNames || "No contacts"}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {parties.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          No buying parties yet. Add your first buyer to get started.
-        </div>
-      )}
+      <DataTable
+        data={parties}
+        columns={columns}
+        selectable={selectMode}
+        selectedItems={selectedParties}
+        onSelectItem={handleSelectParty}
+        onSelectAll={handleSelectAll}
+        onRowClick={!selectMode ? (party) => navigate(`/buying-parties/${party.id}`) : undefined}
+        loading={isLoading}
+        emptyMessage="No buying parties yet. Add your first buyer to get started."
+        getItemId={(party) => party.id}
+      />
 
       {/* New Party Dialog */}
       <Dialog open={showNewPartyDialog} onOpenChange={setShowNewPartyDialog}>
@@ -250,7 +381,7 @@ export default function BuyingParties() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="budgetMin">Budget Min ($)</Label>
+                <Label htmlFor="budgetMin">Check Size Min ($)</Label>
                 <Input
                   id="budgetMin"
                   type="number"
@@ -260,7 +391,7 @@ export default function BuyingParties() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="budgetMax">Budget Max ($)</Label>
+                <Label htmlFor="budgetMax">Check Size Max ($)</Label>
                 <Input
                   id="budgetMax"
                   type="number"
@@ -298,6 +429,31 @@ export default function BuyingParties() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Selected Parties</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedParties.size} buying {selectedParties.size === 1 ? 'party' : 'parties'}?
+              This action cannot be undone and will permanently remove {selectedParties.size === 1 ? 'it' : 'them'} from the system.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletePartiesMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletePartiesMutation.mutate(Array.from(selectedParties))}
+              disabled={deletePartiesMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletePartiesMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

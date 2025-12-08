@@ -454,7 +454,7 @@ export default function BuyingPartyDetail() {
               </div>
 
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Budget Range</div>
+                <div className="text-xs text-muted-foreground mb-1">Check Size Range</div>
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-4 h-4 text-muted-foreground" />
                   <span className="font-mono font-semibold" data-testid="text-budget">
@@ -877,7 +877,7 @@ export default function BuyingPartyDetail() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="edit-budget-min">Budget Min ($)</Label>
+                <Label htmlFor="edit-budget-min">Check Size Min ($)</Label>
                 <Input
                   id="edit-budget-min"
                   data-testid="input-edit-budget-min"
@@ -887,7 +887,7 @@ export default function BuyingPartyDetail() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="edit-budget-max">Budget Max ($)</Label>
+                <Label htmlFor="edit-budget-max">Check Size Max ($)</Label>
                 <Input
                   id="edit-budget-max"
                   data-testid="input-edit-budget-max"
