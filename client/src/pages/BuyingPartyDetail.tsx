@@ -542,22 +542,24 @@ export default function BuyingPartyDetail() {
                         )}
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          data-testid={`button-email-${contact.id}`}
-                        >
-                          <Mail className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          data-testid={`button-call-${contact.id}`}
-                        >
-                          <Phone className="w-3.5 h-3.5" />
-                        </Button>
+                        {contact.email && (
+                          <a href={`mailto:${contact.email}`} target="_blank" rel="noreferrer">
+                            <div>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" data-testid={`button-email-${contact.id}`}>
+                                <Mail className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </a>
+                        )}
+                        {contact.phone && (
+                          <a href={`tel:${contact.phone}`} target="_blank" rel="noreferrer">
+                            <div>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" data-testid={`button-call-${contact.id}`}>
+                                <Phone className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </a>
+                        )}
                       </div>
                     </div>
                   ))}

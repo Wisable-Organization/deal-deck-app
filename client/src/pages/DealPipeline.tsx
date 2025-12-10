@@ -261,10 +261,10 @@ export default function DealPipeline() {
             <Filter className="w-4 h-4 mr-2" />
             Revenue Range{revenueFilterActive && revenueFilter ? ` (${revenueFilter[0].toLocaleString()} - ${revenueFilter[1].toLocaleString()})` : ''}
           </Button>
-          <Button variant="outline" size="default" data-testid="button-industry">
+{/*           <Button variant="outline" size="default" data-testid="button-industry">
             <Filter className="w-4 h-4 mr-2" />
             Industry
-          </Button>
+          </Button> */}
           <Button 
             size="default" 
             data-testid="button-new-deal"

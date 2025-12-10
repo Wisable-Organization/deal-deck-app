@@ -736,12 +736,24 @@ export default function DealDetails() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" data-testid={`button-email-${contact.id}`}>
-                        <Mail className="w-4 h-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" data-testid={`button-call-${contact.id}`}>
-                        <Phone className="w-4 h-4" />
-                      </Button>
+                      {contact.email && (
+                        <a href={`mailto:${contact.email}`} target="_blank" rel="noreferrer">
+                          <div>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" data-testid={`button-email-${contact.id}`}>
+                              <Mail className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </a>
+                      )}
+                      {contact.phone && (
+                        <a href={`tel:${contact.phone}`} target="_blank" rel="noreferrer">
+                          <div>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" data-testid={`button-call-${contact.id}`}>
+                              <Phone className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </a>
+                      )}
                     </div>
                   </div>
                 ))}
