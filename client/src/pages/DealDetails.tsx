@@ -553,10 +553,10 @@ export default function DealDetails() {
                   </Button>
                   {showToolsMenu && (
                     <div className="absolute right-0 mt-2 w-56 rounded-md border bg-popover shadow z-50">
-                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/minival?dealId=${deal.id}`} target="_blank" rel="noreferrer">MiniVal</a>
-                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/cim?dealId=${deal.id}`} target="_blank" rel="noreferrer">CIM Tool</a>
-                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/deck?dealId=${deal.id}`} target="_blank" rel="noreferrer">Deck Tool</a>
-                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`/open/tool/narrative?dealId=${deal.id}`} target="_blank" rel="noreferrer">Narrative</a>
+                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`https://wisable1.retool.com/apps/e5ad1f14-7c61-11f0-80f8-e39357046c2e/Mini%20Val/page1`} target="_blank" rel="noreferrer">MiniVal</a>
+                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`https://wisable1.retool.com/apps/efbfb65a-6d76-11f0-89ab-8bcb24aa30f5/CIM%20Tool/page1`} target="_blank" rel="noreferrer">CIM Tool</a>
+                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`https://wisable1.retool.com/apps/61bff2b0-8ce9-11f0-be22-674731c2d7bd/Deck%20Tool/page1`} target="_blank" rel="noreferrer">Deck Tool</a>
+                      <a className="block px-3 py-2 text-sm hover:bg-muted" href={`https://wisable1.retool.com/apps/10da5c46-6d77-11f0-b7c1-53aa20010f23/Narrative%20Tool/page1`} target="_blank" rel="noreferrer">Narrative</a>
                     </div>
                   )}
                 </div>
@@ -581,14 +581,14 @@ export default function DealDetails() {
                 <Button variant="outline" size="sm" data-testid="button-update-stage">
                   <ArrowUpRight className="w-4 h-4 mr-2" /> Update Stage
                 </Button> */}
-                <Button
+{/*                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => { setDrawerMode("checklist"); setShowDrawer(true); }}
                   data-testid="button-stage-checklist"
                 >
                   Stage Checklist
-                </Button>
+                </Button> */}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1019,12 +1019,14 @@ export default function DealDetails() {
                               </details>
 
                               <div className="flex gap-2 pt-2">
-                                <Button size="sm" variant="outline" className="flex-1" onClick={(e)=>{e.stopPropagation();}} data-testid={`button-email-buyer-${party.id}`}>
-                                  <Mail className="w-4 h-4 mr-1" /> Email
-                                </Button>
-                                <Button size="sm" variant="outline" className="flex-1" onClick={(e)=>{e.stopPropagation();}} data-testid={`button-schedule-buyer-${party.id}`}>
+                                <a href={`mailto:${contact?.email}`} target="_blank" rel="noreferrer">
+                                  <Button size="sm" variant="outline" className="flex-1" data-testid={`button-email-buyer-${party.id}`}>
+                                    <Mail className="w-4 h-4 mr-1" /> Email
+                                  </Button>
+                                </a>
+{/*                                 <Button size="sm" variant="outline" className="flex-1" onClick={(e)=>{e.stopPropagation();}} data-testid={`button-schedule-buyer-${party.id}`}>
                                   <Calendar className="w-4 h-4 mr-1" /> Schedule
-                                </Button>
+                                </Button> */}
                               </div>
                             </Card>
                           ))}
