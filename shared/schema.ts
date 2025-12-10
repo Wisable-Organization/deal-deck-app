@@ -59,6 +59,7 @@ export const deals = pgTable("deals", {
   healthScore: integer("health_score").notNull().default(85),
   ownerId: varchar("owner_id").notNull(),
   owner: text("owner").notNull(), // Owner email for display
+  listingAgreementExclusivityUntil: timestamp("listing_agreement_exclusivity_until"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

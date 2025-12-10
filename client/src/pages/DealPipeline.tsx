@@ -82,6 +82,7 @@ export default function DealPipeline() {
   }, [deals.length, revenueBounds.min, revenueBounds.max]);
 
   const filteredDeals = useMemo(() => {
+    // Apply revenue filter if active (listing agreement exclusivity filter is now done server-side)
     if (!revenueFilterActive || !revenueFilter) {
       return deals;
     }
