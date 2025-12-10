@@ -749,7 +749,7 @@ export default function DealDetails() {
             </Card>
 
             {/* Pinned + Recent Documents */}
-            <Card className="p-4">
+{/*             <Card className="p-4">
               <div className="mb-3">
                 <h3 className="text-sm font-semibold">Key Documents</h3>
                 <div className="mt-2 grid grid-cols-1 gap-3">
@@ -827,7 +827,7 @@ export default function DealDetails() {
                   </div>
                 ))}
               </div>
-            </Card>
+            </Card> */}
           </div>
 
           {/* Middle Column - Activity Timeline */}
