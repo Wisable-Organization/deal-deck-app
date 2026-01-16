@@ -124,7 +124,8 @@ export default function Login() {
               {loginMutation.isPending ? "Logging in..." : "Login"}
             </Button>
 
-            <div className="text-center text-sm">
+            {/* Registration link hidden - registration disabled */}
+            {/* <div className="text-center text-sm">
               Don't have an account?{" "}
               <Link
                 to="/register"
@@ -132,7 +133,7 @@ export default function Login() {
               >
                 Register
               </Link>
-            </div>
+            </div> */}
           </form>
         </CardContent>
       </Card>

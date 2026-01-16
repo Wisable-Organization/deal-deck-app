@@ -12,20 +12,22 @@ import Dashboard from "@/pages/Dashboard";
 import BuyingParties from "@/pages/BuyingParties";
 import BuyingPartyDetail from "@/pages/BuyingPartyDetail";
 import Login from "@/pages/Login";
-import Register from "@/pages/Register";
+// import Register from "@/pages/Register"; // Registration disabled
 import PasswordReset from "@/pages/PasswordReset";
 import NotFound from "@/pages/not-found";
 
 function AppContent() {
   const location = useLocation();
-  const isAuthPage = location.pathname === "/login" || location.pathname === "/register" || location.pathname === "/reset-password";
+  // Registration disabled - removed "/register" from auth pages
+  const isAuthPage = location.pathname === "/login" || location.pathname === "/reset-password";
 
   return (
     <>
       {!isAuthPage && <Navigation />}
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        {/* Registration route disabled */}
+        {/* <Route path="/register" element={<Register />} /> */}
         <Route path="/reset-password" element={<PasswordReset />} />
         <Route
           path="/"

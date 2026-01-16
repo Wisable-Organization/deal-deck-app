@@ -35,8 +35,8 @@ export async function apiRequest(
     localStorage.removeItem("access_token");
     localStorage.removeItem("user_id");
     localStorage.removeItem("user_email");
-    // Redirect to login page
-    if (window.location.pathname !== "/login" && window.location.pathname !== "/register" && window.location.pathname !== "/reset-password") {
+    // Redirect to login page (registration disabled - removed "/register" check)
+    if (window.location.pathname !== "/login" && window.location.pathname !== "/reset-password") {
       window.location.href = "/login";
     }
     throw new Error("Unauthorized: Please login again");
@@ -74,8 +74,8 @@ export const getQueryFn: <T>(options: {
         return null;
       }
       
-      // Redirect to login page
-      if (window.location.pathname !== "/login" && window.location.pathname !== "/register" && window.location.pathname !== "/reset-password") {
+      // Redirect to login page (registration disabled - removed "/register" check)
+      if (window.location.pathname !== "/login" && window.location.pathname !== "/reset-password") {
         window.location.href = "/login";
       }
       throw new Error("Unauthorized: Please login again");
